@@ -1,0 +1,18 @@
+# Binary
+dsfix
+
+# Task store
+.dsfix/
+
+# Config with secrets (use template instead)
+.dsfix.yaml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
