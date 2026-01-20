@@ -55,6 +55,19 @@ filter:
   limit: 100      # 最大获取数量
 ```
 
+## 快速开始
+
+只需告诉 Cascade：
+
+> 运行 `dsfix start` 开始修复
+
+Cascade 会：
+1. 自动列出所有待处理的 issue 类型
+2. 询问你要处理哪个类型
+3. 你选择后自动批量修复
+4. 展示修改内容，等待你确认
+5. 确认后自动提交
+
 ## 使用方法
 
 ### 1. 同步 Issues
@@ -63,78 +76,60 @@ filter:
 dsfix sync
 ```
 
-### 2. 查看状态
+### 2. 开始修复（推荐）
 
 ```bash
-dsfix status   # 总体进度
-dsfix list     # 按类型分组查看待处理 issues
+dsfix start
 ```
 
-### 3. 批量修复（推荐）
+AI 会自动列出任务类型，你只需选择要处理的类型（输入序号或 shortcode）。
 
-查看有哪些类型的 issues：
-```bash
-dsfix list
-```
+### 3. 手动批量修复
 
-批量修复同一类型的所有 issues：
 ```bash
+dsfix list                      # 查看各类型数量
 dsfix batch SCC-S1039           # 修复所有该类型 issues
 dsfix batch SCC-S1039 -l 10     # 限制只处理 10 个
-```
-
-Cascade 会一次性修复所有位置，确认后：
-```bash
-dsfix complete-batch            # 一次性提交所有修复
-dsfix skip-batch                # 跳过并恢复所有修改
 ```
 
 ### 4. 单个修复
 
 ```bash
 dsfix next                      # 获取下一个任务
-# Cascade 修复后
 dsfix complete                  # 提交
 dsfix skip                      # 跳过并恢复
 ```
 
 ## 工作流程
 
-### 批量修复流程（推荐，效率高）
+### 推荐流程（最简单）
 
 ```
-1. dsfix sync                   # 拉取 issues
-2. dsfix list                   # 查看各类型数量
-3. dsfix batch <shortcode>      # 批量获取同类型任务
-4. [Cascade 批量修复]
-5. dsfix complete-batch         # 一次性提交
-6. 重复 3-5 直到完成
+1. dsfix sync                   # 首次拉取 issues
+2. dsfix start                  # AI 自动列出任务，你选择类型
+3. [AI 批量修复]
+4. [确认修改]
+5. [AI 自动提交]
+6. 重复 2-5 直到完成
 ```
 
-### 单个修复流程
+### 手动批量流程
 
 ```
 1. dsfix sync
-2. dsfix next
-3. [Cascade 修复]
-4. dsfix complete
-5. 重复 2-4
+2. dsfix list
+3. dsfix batch <shortcode>
+4. [AI 修复]
+5. dsfix complete-batch
+6. 重复 3-5
 ```
 
 ## 与 Cascade 集成
 
-**批量修复：**
-> 运行 `dsfix batch SCC-S1039` 获取任务，然后帮我批量修复
+**最简单的方式：**
+> 运行 `dsfix start` 开始修复
 
-**单个修复：**
-> 运行 `dsfix next` 获取下一个任务，然后帮我修复
-
-Cascade 会：
-1. 读取任务信息
-2. 修复所有位置
-3. 展示修改内容和 commit message
-4. 等待你确认
-5. 确认后自动提交
+AI 会自动引导你完成整个流程。
 
 ## 命令参考
 
@@ -143,10 +138,10 @@ Cascade 会：
 | `dsfix init` | 初始化配置文件 |
 | `dsfix sync` | 从 DeepSource 同步 issues |
 | `dsfix status` | 查看任务统计 |
+| `dsfix start` | **开始修复（推荐）** |
 | `dsfix list` | 按类型分组查看待处理 issues |
 | `dsfix next` | 输出下一个任务 |
 | `dsfix batch <shortcode>` | 批量输出同类型任务 |
-| `dsfix batch <shortcode> -l N` | 限制批量数量 |
 | `dsfix complete` | 提交单个修复 |
 | `dsfix complete-batch` | 批量提交所有修复 |
 | `dsfix skip` | 跳过单个任务并恢复 |

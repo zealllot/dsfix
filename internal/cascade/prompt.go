@@ -2,6 +2,7 @@ package cascade
 
 import (
 "fmt"
+"sort"
 "strings"
 
 "github.com/zealllot/dsfix/internal/task"
@@ -97,6 +98,68 @@ sb.WriteString("   ```\n")
 	sb.WriteString("3. **Ask user to confirm** by saying: \"请确认修复内容，确认后我将自动提交。\"\n")
 	sb.WriteString("4. **When user confirms** (says 确认/继续/ok/yes), run: `dsfix complete-batch`\n")
 	sb.WriteString("5. **If user wants to skip** (says 跳过/skip), run: `dsfix skip-batch` (this will auto-revert all changes)\n\n")
+
+	return sb.String()
+}
+
+// GenerateStartPrompt generates a prompt showing available issue types and asking user which to fix
+func GenerateStartPrompt(tasks []*task.Task) string {
+	var sb strings.Builder
+
+	// Group by shortcode
+	groups := make(map[string][]*task.Task)
+	for _, t := range tasks {
+		if t.Status == task.StatusPending {
+			groups[t.Issue.Shortcode] = append(groups[t.Issue.Shortcode], t)
+		}
+	}
+
+	if len(groups) == 0 {
+		return "✅ 没有待处理的任务！"
+	}
+
+	// Sort by count
+	type kv struct {
+		Shortcode string
+		Tasks     []*task.Task
+	}
+	var sorted []kv
+	for k, v := range groups {
+		sorted = append(sorted, kv{k, v})
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+return len(sorted[i].Tasks) > len(sorted[j].Tasks)
+	})
+
+	total := 0
+	for _, item := range sorted {
+		total += len(item.Tasks)
+	}
+
+	sb.WriteString("## DSFix 任务列表\n\n")
+	sb.WriteString(fmt.Sprintf("**待处理总数:** %d 个 issues，%d 种类型\n\n", total, len(sorted)))
+
+	sb.WriteString("| # | Shortcode | 问题描述 | 数量 |\n")
+	sb.WriteString("|---|-----------|----------|------|\n")
+	for i, item := range sorted {
+		title := item.Tasks[0].Issue.Title
+		if len(title) > 40 {
+			title = title[:37] + "..."
+		}
+		sb.WriteString(fmt.Sprintf("| %d | `%s` | %s | %d |\n",
+i+1, item.Shortcode, title, len(item.Tasks)))
+	}
+
+	sb.WriteString("\n### 请选择要处理的类型\n")
+	sb.WriteString("你可以：\n")
+	sb.WriteString("- 输入 **序号**（如 `1`）或 **Shortcode**（如 `RVV-B0012`）来批量处理该类型\n")
+	sb.WriteString("- 输入 `1 -l 10` 限制只处理 10 个\n")
+	sb.WriteString("- 输入 `next` 单个处理下一个任务\n\n")
+
+	sb.WriteString("### ⚠️ AI 操作指南\n")
+	sb.WriteString("当用户选择后，根据用户输入执行：\n")
+	sb.WriteString("- 如果用户输入序号或 shortcode，运行: `dsfix batch <shortcode>` 或 `dsfix batch <shortcode> -l N`\n")
+	sb.WriteString("- 如果用户输入 `next`，运行: `dsfix next`\n")
 
 	return sb.String()
 }
