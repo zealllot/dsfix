@@ -37,17 +37,17 @@ func GenerateFixPrompt(t *task.Task, repoPath string) string {
 	sb.WriteString("1. Read the file at the specified location\n")
 	sb.WriteString("2. Understand the issue and fix it according to best practices\n")
 	sb.WriteString("3. Make minimal changes to fix only this specific issue\n")
-	sb.WriteString("4. Do not modify unrelated code\n")
-	sb.WriteString("5. **STOP after fixing and wait for user confirmation**\n\n")
+	sb.WriteString("4. Do not modify unrelated code\n\n")
 
 	sb.WriteString("### ⚠️ IMPORTANT: After Fix\n")
-	sb.WriteString("After you complete the fix, **STOP and ask me to review the changes**.\n")
-	sb.WriteString("Do NOT run any commit commands. I will run `dsfix complete` after reviewing.\n\n")
-
-	sb.WriteString("### Suggested Commit Message\n")
-	sb.WriteString("```\n")
-sb.WriteString(t.GenerateCommitMessage())
-sb.WriteString("\n```\n")
+	sb.WriteString("After completing the fix, you MUST:\n")
+	sb.WriteString("1. **Show the changes you made** (what was changed and why)\n")
+	sb.WriteString("2. **Show the suggested commit message:**\n")
+	sb.WriteString("   ```\n")
+sb.WriteString("   " + t.GenerateCommitMessage() + "\n")
+sb.WriteString("   ```\n")
+	sb.WriteString("3. **Ask user to confirm** by saying: \"请确认修复内容，确认后我将自动提交。\"\n")
+	sb.WriteString("4. **When user confirms** (says 确认/继续/ok/yes), run: `dsfix complete`\n\n")
 
 	return sb.String()
 }
