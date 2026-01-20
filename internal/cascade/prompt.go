@@ -47,7 +47,8 @@ func GenerateFixPrompt(t *task.Task, repoPath string) string {
 sb.WriteString("   " + t.GenerateCommitMessage() + "\n")
 sb.WriteString("   ```\n")
 	sb.WriteString("3. **Ask user to confirm** by saying: \"请确认修复内容，确认后我将自动提交。\"\n")
-	sb.WriteString("4. **When user confirms** (says 确认/继续/ok/yes), run: `dsfix complete`\n\n")
+	sb.WriteString("4. **When user confirms** (says 确认/继续/ok/yes), run: `dsfix complete`\n")
+	sb.WriteString("5. **If user wants to skip** (says 跳过/skip), run: `dsfix skip` (this will auto-revert changes)\n\n")
 
 	return sb.String()
 }
