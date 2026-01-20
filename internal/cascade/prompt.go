@@ -103,6 +103,7 @@ sb.WriteString("   ```\n")
 }
 
 // GenerateStartPrompt generates a prompt showing available issue types and asking user which to fix
+// AI MUST display this table directly to the user in a clear format
 func GenerateStartPrompt(tasks []*task.Task) string {
 	var sb strings.Builder
 
@@ -115,7 +116,7 @@ func GenerateStartPrompt(tasks []*task.Task) string {
 	}
 
 	if len(groups) == 0 {
-		return "✅ 没有待处理的任务！"
+		return "✅ 没有待处理的任务！所有 issues 已修复完成。"
 	}
 
 	// Sort by count
@@ -136,30 +137,42 @@ return len(sorted[i].Tasks) > len(sorted[j].Tasks)
 		total += len(item.Tasks)
 	}
 
-	sb.WriteString("## DSFix 任务列表\n\n")
-	sb.WriteString(fmt.Sprintf("**待处理总数:** %d 个 issues，%d 种类型\n\n", total, len(sorted)))
+	sb.WriteString("<!-- AI_INSTRUCTION: You MUST display the following task list directly to the user in your response. Do NOT ask user to look at terminal output. Format it nicely with markdown. -->\n\n")
+	
+	sb.WriteString(fmt.Sprintf("## 📋 DSFix 任务列表\n\n"))
+	sb.WriteString(fmt.Sprintf("**待处理:** %d 个 issues，%d 种类型\n\n", total, len(sorted)))
 
-	sb.WriteString("| # | Shortcode | 问题描述 | 数量 |\n")
-	sb.WriteString("|---|-----------|----------|------|\n")
-	for i, item := range sorted {
+	sb.WriteString("| 序号 | Shortcode | 问题描述 | 数量 |\n")
+	sb.WriteString("|:----:|-----------|----------|-----:|\n")
+	
+	// Show top 15 for clarity
+	showCount := len(sorted)
+	if showCount > 15 {
+		showCount = 15
+	}
+	
+	for i := 0; i < showCount; i++ {
+		item := sorted[i]
 		title := item.Tasks[0].Issue.Title
-		if len(title) > 40 {
-			title = title[:37] + "..."
+		if len(title) > 45 {
+			title = title[:42] + "..."
 		}
-		sb.WriteString(fmt.Sprintf("| %d | `%s` | %s | %d |\n",
+		sb.WriteString(fmt.Sprintf("| **%d** | `%s` | %s | %d |\n",
 i+1, item.Shortcode, title, len(item.Tasks)))
 	}
+	
+	if len(sorted) > 15 {
+		sb.WriteString(fmt.Sprintf("| ... | ... | *还有 %d 种其他类型* | ... |\n", len(sorted)-15))
+	}
 
-	sb.WriteString("\n### 请选择要处理的类型\n")
-	sb.WriteString("你可以：\n")
-	sb.WriteString("- 输入 **序号**（如 `1`）或 **Shortcode**（如 `RVV-B0012`）来批量处理该类型\n")
-	sb.WriteString("- 输入 `1 -l 10` 限制只处理 10 个\n")
-	sb.WriteString("- 输入 `next` 单个处理下一个任务\n\n")
-
-	sb.WriteString("### ⚠️ AI 操作指南\n")
-	sb.WriteString("当用户选择后，根据用户输入执行：\n")
-	sb.WriteString("- 如果用户输入序号或 shortcode，运行: `dsfix batch <shortcode>` 或 `dsfix batch <shortcode> -l N`\n")
-	sb.WriteString("- 如果用户输入 `next`，运行: `dsfix next`\n")
+	sb.WriteString("\n---\n\n")
+	sb.WriteString("**请选择要处理的类型：**\n\n")
+	sb.WriteString("回复 **序号** 或 **Shortcode** 开始批量修复，例如：\n")
+	sb.WriteString("- `1` - 处理第 1 类问题\n")
+	sb.WriteString("- `RVV-B0012` - 处理指定类型\n")
+	sb.WriteString("- `1 -l 10` - 只处理 10 个\n\n")
+	
+	sb.WriteString("<!-- AI_INSTRUCTION: After displaying this list, wait for user to choose a number or shortcode. When user responds, run: dsfix batch <shortcode> or dsfix batch <shortcode> -l N -->\n")
 
 	return sb.String()
 }
