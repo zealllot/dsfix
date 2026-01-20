@@ -94,9 +94,10 @@ func (c *Client) doRequest(ctx context.Context, query string, variables map[stri
 func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *IssueFilter) ([]Issue, error) {
 	var allIssues []Issue
 	var cursor *string
-	limit := 50
+	pageSize := 50 // Fixed page size for API requests
+	maxIssues := 0
 	if filter != nil && filter.Limit > 0 {
-		limit = filter.Limit
+		maxIssues = filter.Limit
 	}
 
 	for {
@@ -104,7 +105,7 @@ func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *Is
 			"owner":    owner,
 			"name":     repo,
 			"provider": "GITHUB",
-			"first":    limit,
+			"first":    pageSize,
 		}
 		if cursor != nil {
 			variables["after"] = *cursor
@@ -200,6 +201,11 @@ func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *Is
 				}
 
 				allIssues = append(allIssues, issue)
+
+				// Check limit after each issue added
+				if maxIssues > 0 && len(allIssues) >= maxIssues {
+					return allIssues[:maxIssues], nil
+				}
 			}
 		}
 
@@ -209,8 +215,8 @@ func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *Is
 		cursor = &result.Repository.Issues.PageInfo.EndCursor
 
 		// Respect limit if set
-		if filter != nil && filter.Limit > 0 && len(allIssues) >= filter.Limit {
-			allIssues = allIssues[:filter.Limit]
+		if maxIssues > 0 && len(allIssues) >= maxIssues {
+			allIssues = allIssues[:maxIssues]
 			break
 		}
 	}
