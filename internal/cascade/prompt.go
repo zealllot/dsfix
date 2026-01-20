@@ -1,11 +1,11 @@
 package cascade
 
 import (
-"fmt"
-"sort"
-"strings"
+	"fmt"
+	"sort"
+	"strings"
 
-"github.com/zealllot/dsfix/internal/task"
+	"github.com/zealllot/dsfix/internal/task"
 )
 
 // GenerateFixPrompt generates a prompt for Cascade to fix an issue
@@ -42,14 +42,16 @@ func GenerateFixPrompt(t *task.Task, repoPath string) string {
 
 	sb.WriteString("### ⚠️ IMPORTANT: After Fix\n")
 	sb.WriteString("After completing the fix, you MUST:\n")
-	sb.WriteString("1. **Show the changes you made** (what was changed and why)\n")
-	sb.WriteString("2. **Show the suggested commit message:**\n")
+	sb.WriteString("1. **Run `go build ./...`** to verify the fix compiles without errors\n")
+	sb.WriteString("2. If build fails, fix the errors and run build again\n")
+	sb.WriteString("3. **Show the changes you made** (what was changed and why)\n")
+	sb.WriteString("4. **Show the suggested commit message:**\n")
 	sb.WriteString("   ```\n")
-sb.WriteString("   " + t.GenerateCommitMessage() + "\n")
-sb.WriteString("   ```\n")
-	sb.WriteString("3. **Ask user to confirm** by saying: \"请确认修复内容，确认后我将自动提交。\"\n")
-	sb.WriteString("4. **When user confirms** (says 确认/继续/ok/yes), run: `dsfix complete`\n")
-	sb.WriteString("5. **If user wants to skip** (says 跳过/skip), run: `dsfix skip` (this will auto-revert changes)\n\n")
+	sb.WriteString("   " + t.GenerateCommitMessage() + "\n")
+	sb.WriteString("   ```\n")
+	sb.WriteString("5. **Ask user to confirm** by saying: \"✅ Build 通过，请确认修复内容，确认后我将自动提交。\"\n")
+	sb.WriteString("6. **When user confirms** (says 确认/继续/ok/yes), run: `dsfix complete`\n")
+	sb.WriteString("7. **If user wants to skip** (says 跳过/skip), run: `dsfix skip` (this will auto-revert changes)\n\n")
 
 	return sb.String()
 }
@@ -78,7 +80,7 @@ func GenerateBatchFixPrompt(tasks []*task.Task, repoPath string) string {
 	sb.WriteString("|---|------|-------|--------|\n")
 	for i, t := range tasks {
 		sb.WriteString(fmt.Sprintf("| %d | `%s` | %d-%d | `%s` |\n",
-i+1, t.Issue.FilePath, t.Issue.BeginLine, t.Issue.EndLine, t.ID[:16]+"..."))
+			i+1, t.Issue.FilePath, t.Issue.BeginLine, t.Issue.EndLine, t.ID[:16]+"..."))
 	}
 	sb.WriteString("\n")
 
@@ -90,14 +92,16 @@ i+1, t.Issue.FilePath, t.Issue.BeginLine, t.Issue.EndLine, t.ID[:16]+"..."))
 
 	sb.WriteString("### ⚠️ IMPORTANT: After Fix\n")
 	sb.WriteString("After completing ALL fixes, you MUST:\n")
-	sb.WriteString("1. **Show a summary of changes** (files modified and what was changed)\n")
-	sb.WriteString("2. **Show the suggested commit message:**\n")
+	sb.WriteString("1. **Run `go build ./...`** to verify all fixes compile without errors\n")
+	sb.WriteString("2. If build fails, fix the errors and run build again\n")
+	sb.WriteString("3. **Show a summary of changes** (files modified and what was changed)\n")
+	sb.WriteString("4. **Show the suggested commit message:**\n")
 	sb.WriteString("   ```\n")
-sb.WriteString(fmt.Sprintf("   fix(%s): %s (%d occurrences)\n", first.Issue.Shortcode, first.Issue.Title, len(tasks)))
-sb.WriteString("   ```\n")
-	sb.WriteString("3. **Ask user to confirm** by saying: \"请确认修复内容，确认后我将自动提交。\"\n")
-	sb.WriteString("4. **When user confirms** (says 确认/继续/ok/yes), run: `dsfix complete-batch`\n")
-	sb.WriteString("5. **If user wants to skip** (says 跳过/skip), run: `dsfix skip-batch` (this will auto-revert all changes)\n\n")
+	sb.WriteString(fmt.Sprintf("   fix(%s): %s (%d occurrences)\n", first.Issue.Shortcode, first.Issue.Title, len(tasks)))
+	sb.WriteString("   ```\n")
+	sb.WriteString("5. **Ask user to confirm** by saying: \"✅ Build 通过，请确认修复内容，确认后我将自动提交。\"\n")
+	sb.WriteString("6. **When user confirms** (says 确认/继续/ok/yes), run: `dsfix complete-batch`\n")
+	sb.WriteString("7. **If user wants to skip** (says 跳过/skip), run: `dsfix skip-batch` (this will auto-revert all changes)\n\n")
 
 	return sb.String()
 }
@@ -129,7 +133,7 @@ func GenerateStartPrompt(tasks []*task.Task) string {
 		sorted = append(sorted, kv{k, v})
 	}
 	sort.Slice(sorted, func(i, j int) bool {
-return len(sorted[i].Tasks) > len(sorted[j].Tasks)
+		return len(sorted[i].Tasks) > len(sorted[j].Tasks)
 	})
 
 	total := 0
@@ -138,19 +142,19 @@ return len(sorted[i].Tasks) > len(sorted[j].Tasks)
 	}
 
 	sb.WriteString("<!-- AI_INSTRUCTION: You MUST display the following task list directly to the user in your response. Do NOT ask user to look at terminal output. Format it nicely with markdown. -->\n\n")
-	
+
 	sb.WriteString(fmt.Sprintf("## 📋 DSFix 任务列表\n\n"))
 	sb.WriteString(fmt.Sprintf("**待处理:** %d 个 issues，%d 种类型\n\n", total, len(sorted)))
 
 	sb.WriteString("| 序号 | Shortcode | 问题描述 | 数量 |\n")
 	sb.WriteString("|:----:|-----------|----------|-----:|\n")
-	
+
 	// Show top 15 for clarity
 	showCount := len(sorted)
 	if showCount > 15 {
 		showCount = 15
 	}
-	
+
 	for i := 0; i < showCount; i++ {
 		item := sorted[i]
 		title := item.Tasks[0].Issue.Title
@@ -158,9 +162,9 @@ return len(sorted[i].Tasks) > len(sorted[j].Tasks)
 			title = title[:42] + "..."
 		}
 		sb.WriteString(fmt.Sprintf("| **%d** | `%s` | %s | %d |\n",
-i+1, item.Shortcode, title, len(item.Tasks)))
+			i+1, item.Shortcode, title, len(item.Tasks)))
 	}
-	
+
 	if len(sorted) > 15 {
 		sb.WriteString(fmt.Sprintf("| ... | ... | *还有 %d 种其他类型* | ... |\n", len(sorted)-15))
 	}
@@ -171,7 +175,7 @@ i+1, item.Shortcode, title, len(item.Tasks)))
 	sb.WriteString("- `1` - 处理第 1 类问题\n")
 	sb.WriteString("- `RVV-B0012` - 处理指定类型\n")
 	sb.WriteString("- `1 -l 10` - 只处理 10 个\n\n")
-	
+
 	sb.WriteString("<!-- AI_INSTRUCTION: After displaying this list, wait for user to choose a number or shortcode. When user responds, run: dsfix batch <shortcode> or dsfix batch <shortcode> -l N -->\n")
 
 	return sb.String()
@@ -180,13 +184,13 @@ i+1, item.Shortcode, title, len(item.Tasks)))
 // GenerateTaskSummary generates a summary of a task for display
 func GenerateTaskSummary(t *task.Task) string {
 	return fmt.Sprintf("[%s] %s @ %s:%d-%d (%s)",
-t.Issue.Severity,
-t.Issue.Title,
-t.Issue.FilePath,
-t.Issue.BeginLine,
-t.Issue.EndLine,
-t.Issue.Shortcode,
-)
+		t.Issue.Severity,
+		t.Issue.Title,
+		t.Issue.FilePath,
+		t.Issue.BeginLine,
+		t.Issue.EndLine,
+		t.Issue.Shortcode,
+	)
 }
 
 // GenerateProgressReport generates a progress report
@@ -254,7 +258,7 @@ func GenerateGroupStats(tasks []*task.Task) string {
 	for _, item := range sorted {
 		if len(item.Tasks) > 0 {
 			sb.WriteString(fmt.Sprintf("| %s | %s | %d |\n",
-item.Key, item.Tasks[0].Issue.Title, len(item.Tasks)))
+				item.Key, item.Tasks[0].Issue.Title, len(item.Tasks)))
 		}
 	}
 
