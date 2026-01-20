@@ -105,9 +105,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		DeepSource: DeepSourceConfig{},
 		Repository: RepositoryConfig{},
-		Filter: FilterConfig{
-			Limit: 100,
-		},
+		Filter:     FilterConfig{},
 	}
 }
 
@@ -136,8 +134,5 @@ filter:
   # Severities to include (leave empty for all)
   # Options: critical, major, minor
   severities: []
-  
-  # Maximum number of issues to fetch (0 for unlimited)
-  limit: 100
 `
 }

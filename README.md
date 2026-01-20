@@ -52,7 +52,6 @@ repository:
 filter:
   categories: []  # Leave empty to get all categories
   severities: []  # Leave empty to get all severities
-  limit: 100      # Maximum number of issues to fetch
 ```
 
 ## Quick Start
@@ -221,7 +220,6 @@ repository:
 filter:
   categories: []  # 留空获取所有类别
   severities: []  # 留空获取所有严重程度
-  limit: 100      # 最大获取数量
 ```
 
 ## 快速开始
