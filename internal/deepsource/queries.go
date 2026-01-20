@@ -9,12 +9,15 @@ query GetRepositoryIssues($owner: String!, $name: String!, $provider: VCSProvide
       edges {
         node {
           id
-          title
-          shortcode
-          category
           issue {
+            shortcode
+            title
+            category
             severity
             description
+            analyzer {
+              shortcode
+            }
           }
           occurrences(first: 100) {
             edges {
@@ -25,9 +28,6 @@ query GetRepositoryIssues($owner: String!, $name: String!, $provider: VCSProvide
                 endLine
               }
             }
-          }
-          analyzer {
-            shortcode
           }
         }
       }

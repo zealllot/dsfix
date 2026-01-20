@@ -120,13 +120,16 @@ func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *Is
 				Issues struct {
 					Edges []struct {
 						Node struct {
-							ID        string `json:"id"`
-							Title     string `json:"title"`
-							Shortcode string `json:"shortcode"`
-							Category  string `json:"category"`
-							Issue     struct {
+							ID    string `json:"id"`
+							Issue struct {
+								Shortcode   string `json:"shortcode"`
+								Title       string `json:"title"`
+								Category    string `json:"category"`
 								Severity    string `json:"severity"`
 								Description string `json:"description"`
+								Analyzer    struct {
+									Shortcode string `json:"shortcode"`
+								} `json:"analyzer"`
 							} `json:"issue"`
 							Occurrences struct {
 								Edges []struct {
@@ -138,9 +141,6 @@ func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *Is
 									} `json:"node"`
 								} `json:"edges"`
 							} `json:"occurrences"`
-							Analyzer struct {
-								Shortcode string `json:"shortcode"`
-							} `json:"analyzer"`
 						} `json:"node"`
 					} `json:"edges"`
 					PageInfo struct {
@@ -160,15 +160,15 @@ func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *Is
 			for _, occ := range node.Occurrences.Edges {
 				issue := Issue{
 					ID:          occ.Node.ID,
-					Title:       node.Title,
-					Category:    node.Category,
-					Shortcode:   node.Shortcode,
+					Title:       node.Issue.Title,
+					Category:    node.Issue.Category,
+					Shortcode:   node.Issue.Shortcode,
 					Severity:    node.Issue.Severity,
 					FilePath:    occ.Node.Path,
 					BeginLine:   occ.Node.BeginLine,
 					EndLine:     occ.Node.EndLine,
 					Description: node.Issue.Description,
-					Analyzer:    node.Analyzer.Shortcode,
+					Analyzer:    node.Issue.Analyzer.Shortcode,
 				}
 
 				// Apply category filter
