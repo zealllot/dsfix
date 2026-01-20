@@ -47,7 +47,6 @@ deepsource:
 repository:
   owner: "your-org"
   name: "your-repo"
-  path: ""  # Leave empty to use current directory
 
 filter:
   categories: []  # Leave empty to get all categories
@@ -216,7 +215,6 @@ deepsource:
 repository:
   owner: "your-org"
   name: "your-repo"
-  path: ""  # 留空使用当前目录
 
 filter:
   categories: []  # 留空获取所有类别

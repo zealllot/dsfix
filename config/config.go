@@ -33,7 +33,6 @@ type DeepSourceConfig struct {
 type RepositoryConfig struct {
 	Owner string `yaml:"owner"` // GitHub owner/organization
 	Name  string `yaml:"name"`  // Repository name
-	Path  string `yaml:"path"`  // Local path to the repository
 }
 
 // FilterConfig contains issue filter settings
@@ -120,11 +119,9 @@ deepsource:
 
 repository:
   # GitHub owner/organization
-  owner: "theplant"
+  owner: ""
   # Repository name
-  name: "mcd-website"
-  # Local path to the repository (leave empty for current directory)
-  path: ""
+  name: ""
 
 filter:
   # Categories to include (leave empty for all)
