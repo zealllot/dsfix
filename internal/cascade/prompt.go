@@ -188,10 +188,9 @@ func GenerateStartPrompt(tasks []*task.Task) string {
 	sb.WriteString("**请选择要处理的类型：**\n\n")
 	sb.WriteString("回复 **序号** 或 **Shortcode** 开始批量修复，例如：\n")
 	sb.WriteString("- `1` - 处理第 1 类问题\n")
-	sb.WriteString("- `RVV-B0012` - 处理指定类型\n")
-	sb.WriteString("- `1 -l 10` - 只处理 10 个\n\n")
+	sb.WriteString("- `RVV-B0012` - 处理指定类型\n\n")
 
-	sb.WriteString("<!-- AI_INSTRUCTION: After displaying this list, wait for user to choose a number or shortcode. When user responds, run: dsfix batch <shortcode> or dsfix batch <shortcode> -l N -->\n")
+	sb.WriteString("<!-- AI_INSTRUCTION: After displaying this list, wait for user to choose a number or shortcode. When user responds, run EXACTLY: `dsfix batch <shortcode>` with NO extra flags. Do NOT add -l or any other flags unless user explicitly specifies a limit. -->\n")
 
 	return sb.String()
 }
