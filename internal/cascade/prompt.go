@@ -84,14 +84,16 @@ func GenerateBatchFixPrompt(tasks []*task.Task, repoPath string) string {
 	}
 	sb.WriteString("\n")
 
-	sb.WriteString("### Instructions\n")
-	sb.WriteString("1. Fix ALL occurrences listed above\n")
+	sb.WriteString("### ⚠️ CRITICAL: You MUST fix ALL locations\n")
+	sb.WriteString(fmt.Sprintf("**There are %d locations to fix. You MUST fix ALL of them, not just some.**\n\n", len(tasks)))
+	sb.WriteString("1. Fix **EVERY** occurrence listed in the table above\n")
 	sb.WriteString("2. Apply the same fix pattern to each location\n")
 	sb.WriteString("3. Make minimal changes to fix only these specific issues\n")
-	sb.WriteString("4. Do not modify unrelated code\n\n")
+	sb.WriteString("4. Do not modify unrelated code\n")
+	sb.WriteString("5. **Do NOT stop until all locations are fixed**\n\n")
 
-	sb.WriteString("### ⚠️ IMPORTANT: After Fix\n")
-	sb.WriteString("After completing ALL fixes, you MUST:\n")
+	sb.WriteString("### After Fixing ALL Locations\n")
+	sb.WriteString("After completing ALL fixes (all rows in the table), you MUST:\n")
 	sb.WriteString("1. **Run `go build ./...`** to verify all fixes compile without errors\n")
 	sb.WriteString("2. If build fails, fix the errors and run build again\n")
 	sb.WriteString("3. **Show a summary of changes** (files modified and what was changed)\n")
