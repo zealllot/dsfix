@@ -8,7 +8,7 @@ import (
 "github.com/zealllot/dsfix/internal/deepsource"
 )
 
-// Manager manages the task lifecycle
+// Manager handles task operations
 type Manager struct {
 	store  *Store
 	client *deepsource.Client
@@ -52,8 +52,13 @@ func (m *Manager) Sync(ctx context.Context, filter *deepsource.IssueFilter) (int
 	return newCount, nil
 }
 
-// GetNextTask returns the next task to process
+// GetNextTask returns the next task to process (pending or in_progress)
 func (m *Manager) GetNextTask() *Task {
+	// First check in_progress tasks
+	inProgress := m.store.GetByStatus(StatusInProgress)
+	if len(inProgress) > 0 {
+		return inProgress[0]
+	}
 	return m.store.GetNextPending()
 }
 
@@ -141,14 +146,19 @@ return si < sj
 	return tasks
 }
 
-// GetPendingTasks returns all pending tasks
+// GetPendingTasks returns all pending and in_progress tasks (tasks that need to be processed)
 func (m *Manager) GetPendingTasks() []*Task {
-	return m.store.GetByStatus(StatusPending)
+	pending := m.store.GetByStatus(StatusPending)
+	inProgress := m.store.GetByStatus(StatusInProgress)
+	return append(pending, inProgress...)
 }
 
-// GetTasksByShortcode returns all pending tasks with the specified shortcode
+// GetTasksByShortcode returns all pending and in_progress tasks with the specified shortcode
 func (m *Manager) GetTasksByShortcode(shortcode string) []*Task {
-	allTasks := m.store.GetByStatus(StatusPending)
+	pending := m.store.GetByStatus(StatusPending)
+	inProgress := m.store.GetByStatus(StatusInProgress)
+	allTasks := append(pending, inProgress...)
+	
 	var filtered []*Task
 	for _, t := range allTasks {
 		if t.Issue.Shortcode == shortcode {
@@ -158,9 +168,12 @@ func (m *Manager) GetTasksByShortcode(shortcode string) []*Task {
 	return filtered
 }
 
-// GetShortcodeStats returns statistics grouped by shortcode for pending tasks
+// GetShortcodeStats returns statistics grouped by shortcode for pending and in_progress tasks
 func (m *Manager) GetShortcodeStats() map[string]int {
-	tasks := m.store.GetByStatus(StatusPending)
+	pending := m.store.GetByStatus(StatusPending)
+	inProgress := m.store.GetByStatus(StatusInProgress)
+	tasks := append(pending, inProgress...)
+	
 	stats := make(map[string]int)
 	for _, t := range tasks {
 		stats[t.Issue.Shortcode]++
