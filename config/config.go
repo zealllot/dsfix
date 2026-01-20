@@ -134,5 +134,8 @@ filter:
   # Severities to include (leave empty for all)
   # Options: critical, major, minor
   severities: []
+  
+  # Maximum number of issues to fetch (leave empty for unlimited)
+  limit:
 `
 }
