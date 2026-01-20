@@ -6,7 +6,8 @@ DeepSource + Windsurf/Cascade 集成工具，自动修复代码质量问题。
 
 - 从 DeepSource 拉取代码质量 issues
 - 将每个 issue 转化为独立任务
-- 在 Windsurf/Cascade 中逐个处理
+- 支持**批量修复**同类型 issues（大幅提升效率）
+- 在 Windsurf/Cascade 中自动处理
 - 每个修复自动生成独立 commit
 - 支持任务过滤（按类别、严重程度）
 
@@ -62,89 +63,78 @@ filter:
 dsfix sync
 ```
 
-从 DeepSource 拉取 issues 并创建本地任务。
-
 ### 2. 查看状态
 
 ```bash
-dsfix status
+dsfix status   # 总体进度
+dsfix list     # 按类型分组查看待处理 issues
 ```
 
-显示任务统计信息。
+### 3. 批量修复（推荐）
 
-### 3. 在 Windsurf 中修复
+查看有哪些类型的 issues：
+```bash
+dsfix list
+```
 
-**与 Cascade 配合使用（推荐）**
+批量修复同一类型的所有 issues：
+```bash
+dsfix batch SCC-S1039           # 修复所有该类型 issues
+dsfix batch SCC-S1039 -l 10     # 限制只处理 10 个
+```
+
+Cascade 会一次性修复所有位置，确认后：
+```bash
+dsfix complete-batch            # 一次性提交所有修复
+dsfix skip-batch                # 跳过并恢复所有修改
+```
+
+### 4. 单个修复
 
 ```bash
-dsfix next
+dsfix next                      # 获取下一个任务
+# Cascade 修复后
+dsfix complete                  # 提交
+dsfix skip                      # 跳过并恢复
 ```
-
-输出下一个待处理任务的详细信息，Cascade 会自动读取并修复。
-
-修复完成后，确认修改并提交：
-
-```bash
-dsfix complete
-```
-
-这会自动：
-1. Stage 修改的文件
-2. 使用建议的 commit message 提交
-3. 标记任务为已完成
-
-或者使用自定义 commit message：
-
-```bash
-dsfix complete -m "fix: custom commit message"
-```
-
-跳过当前任务：
-
-```bash
-dsfix skip -R "需要人工判断"
-```
-
-### 4. 交互式运行
-
-```bash
-dsfix run
-```
-
-逐个显示任务，手动确认修复。
-
-### 5. 重置任务
-
-```bash
-dsfix reset
-```
-
-将所有任务重置为待处理状态。
 
 ## 工作流程
 
+### 批量修复流程（推荐，效率高）
+
 ```
-1. dsfix sync          # 拉取 issues
-2. dsfix next          # 获取下一个任务
-3. [Cascade 自动修复代码]
-4. [确认修改内容]
-5. dsfix complete      # 自动 commit 并标记完成
-6. 重复 2-5 直到完成
+1. dsfix sync                   # 拉取 issues
+2. dsfix list                   # 查看各类型数量
+3. dsfix batch <shortcode>      # 批量获取同类型任务
+4. [Cascade 批量修复]
+5. dsfix complete-batch         # 一次性提交
+6. 重复 3-5 直到完成
+```
+
+### 单个修复流程
+
+```
+1. dsfix sync
+2. dsfix next
+3. [Cascade 修复]
+4. dsfix complete
+5. 重复 2-4
 ```
 
 ## 与 Cascade 集成
 
-在 Windsurf 中，你可以直接告诉 Cascade：
+**批量修复：**
+> 运行 `dsfix batch SCC-S1039` 获取任务，然后帮我批量修复
 
+**单个修复：**
 > 运行 `dsfix next` 获取下一个任务，然后帮我修复
 
 Cascade 会：
 1. 读取任务信息
-2. 查看相关文件
-3. 修复问题
+2. 修复所有位置
+3. 展示修改内容和 commit message
 4. 等待你确认
-
-确认后运行 `dsfix complete`，自动提交修改。
+5. 确认后自动提交
 
 ## 命令参考
 
@@ -153,12 +143,15 @@ Cascade 会：
 | `dsfix init` | 初始化配置文件 |
 | `dsfix sync` | 从 DeepSource 同步 issues |
 | `dsfix status` | 查看任务统计 |
+| `dsfix list` | 按类型分组查看待处理 issues |
 | `dsfix next` | 输出下一个任务 |
-| `dsfix complete` | 提交修复并标记完成 |
-| `dsfix complete --no-commit` | 仅标记完成，不提交 |
-| `dsfix skip` | 跳过当前任务 |
+| `dsfix batch <shortcode>` | 批量输出同类型任务 |
+| `dsfix batch <shortcode> -l N` | 限制批量数量 |
+| `dsfix complete` | 提交单个修复 |
+| `dsfix complete-batch` | 批量提交所有修复 |
+| `dsfix skip` | 跳过单个任务并恢复 |
+| `dsfix skip-batch` | 跳过批量任务并恢复 |
 | `dsfix reset` | 重置所有任务 |
-| `dsfix run` | 交互式修复流程 |
 
 ## 环境变量
 
