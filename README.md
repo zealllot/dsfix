@@ -1,5 +1,174 @@
 # DSFix
 
+DeepSource + Windsurf/Cascade integration tool for automatically fixing code quality issues.
+
+## Features
+
+- Fetch code quality issues from DeepSource
+- Convert each issue into an independent task
+- Support **batch fixing** of same-type issues (greatly improves efficiency)
+- Automatic processing in Windsurf/Cascade
+- Auto-generate independent commit for each fix
+- Support task filtering (by category, severity)
+
+## Installation
+
+```bash
+go install github.com/zealllot/dsfix/cmd/dsfix@latest
+```
+
+Or build from source:
+
+```bash
+git clone https://github.com/zealllot/dsfix.git
+cd dsfix
+go build -o dsfix ./cmd/dsfix
+```
+
+## Configuration
+
+1. Create DeepSource API Token:
+   - Visit https://app.deepsource.io/settings/tokens
+   - Create a new Personal Access Token
+
+2. Initialize configuration:
+
+```bash
+cd /path/to/your/repo
+dsfix init
+```
+
+3. Edit `.dsfix.yaml`:
+
+```yaml
+deepsource:
+  api_token: "your-api-token-here"  # Or set DEEPSOURCE_API_TOKEN env var
+
+repository:
+  owner: "your-org"
+  name: "your-repo"
+  path: ""  # Leave empty to use current directory
+
+filter:
+  categories: []  # Leave empty to get all categories
+  severities: []  # Leave empty to get all severities
+  limit: 100      # Maximum number of issues to fetch
+```
+
+## Quick Start
+
+Just tell Cascade:
+
+> Run `dsfix start` to begin fixing
+
+Cascade will:
+1. Automatically list all pending issue types
+2. Ask which type you want to fix
+3. Batch fix after your selection
+4. Show changes and wait for your confirmation
+5. Auto-commit after confirmation
+
+## Usage
+
+### 1. Sync Issues
+
+```bash
+dsfix sync
+```
+
+### 2. Start Fixing (Recommended)
+
+```bash
+dsfix start
+```
+
+AI will automatically list task types, you just need to select which type to fix (enter number or shortcode).
+
+### 3. Manual Batch Fix
+
+```bash
+dsfix list                      # View count by type
+dsfix batch SCC-S1039           # Fix all issues of this type
+dsfix batch SCC-S1039 -l 10     # Limit to 10 issues
+```
+
+### 4. Single Fix
+
+```bash
+dsfix next                      # Get next task
+dsfix complete                  # Commit
+dsfix skip                      # Skip and revert
+```
+
+## Workflow
+
+### Recommended Flow (Simplest)
+
+```
+1. dsfix sync                   # Fetch issues (first time)
+2. dsfix start                  # AI lists tasks, you select type
+3. [AI batch fixes]
+4. [Confirm changes]
+5. [AI auto-commits]
+6. Repeat 2-5 until done
+```
+
+### Manual Batch Flow
+
+```
+1. dsfix sync
+2. dsfix list
+3. dsfix batch <shortcode>
+4. [AI fixes]
+5. dsfix complete-batch
+6. Repeat 3-5
+```
+
+## Cascade Integration
+
+**Simplest way:**
+> Run `dsfix start` to begin fixing
+
+AI will guide you through the entire process.
+
+## Command Reference
+
+| Command | Description |
+|---------|-------------|
+| `dsfix init` | Initialize config file |
+| `dsfix sync` | Sync issues from DeepSource |
+| `dsfix status` | View task statistics |
+| `dsfix start` | **Start fixing (Recommended)** |
+| `dsfix list` | List pending issues grouped by type |
+| `dsfix next` | Output next task |
+| `dsfix batch <shortcode>` | Batch output same-type tasks |
+| `dsfix complete` | Commit single fix |
+| `dsfix complete-batch` | Batch commit all fixes |
+| `dsfix skip` | Skip single task and revert |
+| `dsfix skip-batch` | Skip batch tasks and revert |
+| `dsfix reset` | Reset all tasks |
+
+## Environment Variables
+
+- `DEEPSOURCE_API_TOKEN`: DeepSource API Token
+
+## File Structure
+
+```
+.dsfix/
+└── tasks.json    # Task storage file
+
+.dsfix.yaml       # Config file
+```
+
+## License
+
+MIT
+
+---
+
+# DSFix (中文)
+
 DeepSource + Windsurf/Cascade 集成工具，自动修复代码质量问题。
 
 ## 功能
@@ -45,8 +214,8 @@ deepsource:
   api_token: "your-api-token-here"  # 或设置 DEEPSOURCE_API_TOKEN 环境变量
 
 repository:
-  owner: "theplant"
-  name: "mcd-website"
+  owner: "your-org"
+  name: "your-repo"
   path: ""  # 留空使用当前目录
 
 filter:
