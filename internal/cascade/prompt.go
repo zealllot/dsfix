@@ -111,16 +111,29 @@ func GenerateBatchFixPrompt(tasks []*task.Task, repoPath string) string {
 func GenerateStartPrompt(tasks []*task.Task) string {
 	var sb strings.Builder
 
-	// Group by shortcode
+	// Count in_progress tasks
+	inProgressCount := 0
+	for _, t := range tasks {
+		if t.Status == task.StatusInProgress {
+			inProgressCount++
+		}
+	}
+
+	// Group by shortcode (include both pending and in_progress)
 	groups := make(map[string][]*task.Task)
 	for _, t := range tasks {
-		if t.Status == task.StatusPending {
+		if t.Status == task.StatusPending || t.Status == task.StatusInProgress {
 			groups[t.Issue.Shortcode] = append(groups[t.Issue.Shortcode], t)
 		}
 	}
 
 	if len(groups) == 0 {
 		return "✅ 没有待处理的任务！所有 issues 已修复完成。"
+	}
+
+	// If there are in_progress tasks, show warning
+	if inProgressCount > 0 {
+		sb.WriteString(fmt.Sprintf("⚠️ **注意:** 有 %d 个任务处于进行中状态，可能是之前中断的。运行 `dsfix reset-progress` 可重置这些任务。\n\n", inProgressCount))
 	}
 
 	// Sort by count

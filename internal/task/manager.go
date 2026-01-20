@@ -225,3 +225,16 @@ func (m *Manager) Reset() error {
 	}
 	return m.store.Save()
 }
+
+// ResetInProgress resets all in-progress tasks back to pending
+func (m *Manager) ResetInProgress() (int, error) {
+	tasks := m.store.GetByStatus(StatusInProgress)
+	for _, task := range tasks {
+		task.Status = StatusPending
+		m.store.Update(task)
+	}
+	if err := m.store.Save(); err != nil {
+		return 0, err
+	}
+	return len(tasks), nil
+}
