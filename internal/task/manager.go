@@ -1,11 +1,11 @@
 package task
 
 import (
-	"context"
-	"fmt"
-	"sort"
+"context"
+"fmt"
+"sort"
 
-	"github.com/zealllot/dsfix/internal/deepsource"
+"github.com/zealllot/dsfix/internal/deepsource"
 )
 
 // Manager manages the task lifecycle
@@ -130,10 +130,10 @@ func (m *Manager) GetAllTasks() []*Task {
 	}
 
 	sort.Slice(tasks, func(i, j int) bool {
-		si := severityOrder[tasks[i].Issue.Severity]
-		sj := severityOrder[tasks[j].Issue.Severity]
-		if si != sj {
-			return si < sj
+si := severityOrder[tasks[i].Issue.Severity]
+sj := severityOrder[tasks[j].Issue.Severity]
+if si != sj {
+return si < sj
 		}
 		return tasks[i].Issue.Category < tasks[j].Issue.Category
 	})
@@ -144,6 +144,72 @@ func (m *Manager) GetAllTasks() []*Task {
 // GetPendingTasks returns all pending tasks
 func (m *Manager) GetPendingTasks() []*Task {
 	return m.store.GetByStatus(StatusPending)
+}
+
+// GetTasksByShortcode returns all pending tasks with the specified shortcode
+func (m *Manager) GetTasksByShortcode(shortcode string) []*Task {
+	allTasks := m.store.GetByStatus(StatusPending)
+	var filtered []*Task
+	for _, t := range allTasks {
+		if t.Issue.Shortcode == shortcode {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered
+}
+
+// GetShortcodeStats returns statistics grouped by shortcode for pending tasks
+func (m *Manager) GetShortcodeStats() map[string]int {
+	tasks := m.store.GetByStatus(StatusPending)
+	stats := make(map[string]int)
+	for _, t := range tasks {
+		stats[t.Issue.Shortcode]++
+	}
+	return stats
+}
+
+// StartBatch marks multiple tasks as in progress
+func (m *Manager) StartBatch(taskIDs []string) error {
+	for _, id := range taskIDs {
+		task, ok := m.store.Get(id)
+		if !ok {
+			continue
+		}
+		task.MarkInProgress()
+		m.store.Update(task)
+	}
+	return m.store.Save()
+}
+
+// CompleteBatch marks multiple tasks as fixed
+func (m *Manager) CompleteBatch(taskIDs []string, commitHash, commitMsg string) error {
+	for _, id := range taskIDs {
+		task, ok := m.store.Get(id)
+		if !ok {
+			continue
+		}
+		task.MarkFixed(commitHash, commitMsg)
+		m.store.Update(task)
+	}
+	return m.store.Save()
+}
+
+// SkipBatch marks multiple tasks as skipped
+func (m *Manager) SkipBatch(taskIDs []string, reason string) error {
+	for _, id := range taskIDs {
+		task, ok := m.store.Get(id)
+		if !ok {
+			continue
+		}
+		task.MarkSkipped(reason)
+		m.store.Update(task)
+	}
+	return m.store.Save()
+}
+
+// GetInProgressTasks returns all in-progress tasks
+func (m *Manager) GetInProgressTasks() []*Task {
+	return m.store.GetByStatus(StatusInProgress)
 }
 
 // Reset resets all tasks to pending status

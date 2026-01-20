@@ -53,6 +53,54 @@ sb.WriteString("   ```\n")
 	return sb.String()
 }
 
+// GenerateBatchFixPrompt generates a prompt for Cascade to fix multiple issues of the same type
+func GenerateBatchFixPrompt(tasks []*task.Task, repoPath string) string {
+	if len(tasks) == 0 {
+		return "No tasks to fix."
+	}
+
+	var sb strings.Builder
+	first := tasks[0]
+
+	sb.WriteString("## DeepSource Batch Fix Task\n\n")
+	sb.WriteString(fmt.Sprintf("**Issue Type:** %s\n", first.Issue.Title))
+	sb.WriteString(fmt.Sprintf("**Shortcode:** %s\n", first.Issue.Shortcode))
+	sb.WriteString(fmt.Sprintf("**Category:** %s\n", first.Issue.Category))
+	sb.WriteString(fmt.Sprintf("**Total Occurrences:** %d\n\n", len(tasks)))
+
+	sb.WriteString("### Description\n")
+	sb.WriteString(first.Issue.Description)
+	sb.WriteString("\n\n")
+
+	sb.WriteString("### Locations to Fix\n")
+	sb.WriteString("| # | File | Lines | Task ID |\n")
+	sb.WriteString("|---|------|-------|--------|\n")
+	for i, t := range tasks {
+		sb.WriteString(fmt.Sprintf("| %d | `%s` | %d-%d | `%s` |\n",
+i+1, t.Issue.FilePath, t.Issue.BeginLine, t.Issue.EndLine, t.ID[:16]+"..."))
+	}
+	sb.WriteString("\n")
+
+	sb.WriteString("### Instructions\n")
+	sb.WriteString("1. Fix ALL occurrences listed above\n")
+	sb.WriteString("2. Apply the same fix pattern to each location\n")
+	sb.WriteString("3. Make minimal changes to fix only these specific issues\n")
+	sb.WriteString("4. Do not modify unrelated code\n\n")
+
+	sb.WriteString("### ⚠️ IMPORTANT: After Fix\n")
+	sb.WriteString("After completing ALL fixes, you MUST:\n")
+	sb.WriteString("1. **Show a summary of changes** (files modified and what was changed)\n")
+	sb.WriteString("2. **Show the suggested commit message:**\n")
+	sb.WriteString("   ```\n")
+sb.WriteString(fmt.Sprintf("   fix(%s): %s (%d occurrences)\n", first.Issue.Shortcode, first.Issue.Title, len(tasks)))
+sb.WriteString("   ```\n")
+	sb.WriteString("3. **Ask user to confirm** by saying: \"请确认修复内容，确认后我将自动提交。\"\n")
+	sb.WriteString("4. **When user confirms** (says 确认/继续/ok/yes), run: `dsfix complete-batch`\n")
+	sb.WriteString("5. **If user wants to skip** (says 跳过/skip), run: `dsfix skip-batch` (this will auto-revert all changes)\n\n")
+
+	return sb.String()
+}
+
 // GenerateTaskSummary generates a summary of a task for display
 func GenerateTaskSummary(t *task.Task) string {
 	return fmt.Sprintf("[%s] %s @ %s:%d-%d (%s)",
@@ -89,6 +137,49 @@ func GenerateProgressReport(stats map[task.Status]int) string {
 		fixed := stats[task.StatusFixed]
 		progress := float64(fixed) / float64(total) * 100
 		sb.WriteString(fmt.Sprintf("\n**Progress:** %.1f%%\n", progress))
+	}
+
+	return sb.String()
+}
+
+// GenerateGroupStats generates statistics grouped by shortcode
+func GenerateGroupStats(tasks []*task.Task) string {
+	var sb strings.Builder
+
+	// Group by shortcode
+	groups := make(map[string][]*task.Task)
+	for _, t := range tasks {
+		if t.Status == task.StatusPending {
+			groups[t.Issue.Shortcode] = append(groups[t.Issue.Shortcode], t)
+		}
+	}
+
+	sb.WriteString("## Pending Issues by Type\n\n")
+	sb.WriteString("| Shortcode | Title | Count |\n")
+	sb.WriteString("|-----------|-------|-------|\n")
+
+	// Sort by count (descending)
+	type kv struct {
+		Key   string
+		Tasks []*task.Task
+	}
+	var sorted []kv
+	for k, v := range groups {
+		sorted = append(sorted, kv{k, v})
+	}
+	for i := 0; i < len(sorted)-1; i++ {
+		for j := i + 1; j < len(sorted); j++ {
+			if len(sorted[j].Tasks) > len(sorted[i].Tasks) {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+			}
+		}
+	}
+
+	for _, item := range sorted {
+		if len(item.Tasks) > 0 {
+			sb.WriteString(fmt.Sprintf("| %s | %s | %d |\n",
+item.Key, item.Tasks[0].Issue.Title, len(item.Tasks)))
+		}
 	}
 
 	return sb.String()
