@@ -52,6 +52,7 @@ repository:
 filter:
   categories: []  # Leave empty to get all categories
   severities: []  # Leave empty to get all severities
+  limit:         # Leave empty for unlimited
 ```
 
 ## Quick Start
@@ -220,6 +221,7 @@ repository:
 filter:
   categories: []  # 留空获取所有类别
   severities: []  # 留空获取所有严重程度
+  limit:         # 留空表示不限制
 ```
 
 ## 快速开始
