@@ -154,6 +154,8 @@ func (m *Manager) GetPendingTasks() []*Task {
 }
 
 // GetTasksByShortcode returns all pending and in_progress tasks with the specified shortcode
+// Tasks are sorted by file path (ascending) then by line number (descending)
+// This ensures same-file issues are fixed from bottom to top, avoiding line number shifts
 func (m *Manager) GetTasksByShortcode(shortcode string) []*Task {
 	pending := m.store.GetByStatus(StatusPending)
 	inProgress := m.store.GetByStatus(StatusInProgress)
@@ -165,6 +167,17 @@ func (m *Manager) GetTasksByShortcode(shortcode string) []*Task {
 			filtered = append(filtered, t)
 		}
 	}
+
+	// Sort by file path (ascending), then by line number (descending)
+	// This way, within the same file, we fix from bottom to top
+	sort.Slice(filtered, func(i, j int) bool {
+		if filtered[i].Issue.FilePath != filtered[j].Issue.FilePath {
+			return filtered[i].Issue.FilePath < filtered[j].Issue.FilePath
+		}
+		// Same file: sort by line number descending (larger line first)
+		return filtered[i].Issue.BeginLine > filtered[j].Issue.BeginLine
+	})
+
 	return filtered
 }
 
