@@ -19,7 +19,7 @@ query GetRepositoryIssues($owner: String!, $name: String!, $provider: VCSProvide
               shortcode
             }
           }
-          occurrences(first: 100) {
+          occurrences(first: 1000) {
             edges {
               node {
                 id
