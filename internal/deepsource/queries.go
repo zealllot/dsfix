@@ -19,7 +19,7 @@ query GetRepositoryIssues($owner: String!, $name: String!, $provider: VCSProvide
               shortcode
             }
           }
-          occurrences(first: 1000) {
+          occurrences(first: 100) {
             edges {
               node {
                 id
@@ -28,12 +28,39 @@ query GetRepositoryIssues($owner: String!, $name: String!, $provider: VCSProvide
                 endLine
               }
             }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
           }
         }
       }
       pageInfo {
         hasNextPage
         endCursor
+      }
+    }
+  }
+}
+`
+
+const GetOccurrencesQuery = `
+query GetOccurrences($issueId: ID!, $first: Int, $after: String) {
+  node(id: $issueId) {
+    ... on RepositoryIssue {
+      occurrences(first: $first, after: $after) {
+        edges {
+          node {
+            id
+            path
+            beginLine
+            endLine
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
       }
     }
   }

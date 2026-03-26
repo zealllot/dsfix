@@ -90,6 +90,74 @@ func (c *Client) doRequest(ctx context.Context, query string, variables map[stri
 	return gqlResp.Data, nil
 }
 
+// Occurrence represents a single occurrence
+type Occurrence struct {
+	ID        string
+	Path      string
+	BeginLine int
+	EndLine   int
+}
+
+// fetchOccurrences fetches all occurrences for a repository issue with pagination
+func (c *Client) fetchOccurrences(ctx context.Context, issueID string) ([]Occurrence, error) {
+	var allOccurrences []Occurrence
+	var cursor *string
+
+	for {
+		variables := map[string]interface{}{
+			"issueId": issueID,
+			"first":   100,
+		}
+		if cursor != nil {
+			variables["after"] = *cursor
+		}
+
+		data, err := c.doRequest(ctx, GetOccurrencesQuery, variables)
+		if err != nil {
+			return nil, err
+		}
+
+		var result struct {
+			Node struct {
+				Occurrences struct {
+					Edges []struct {
+						Node struct {
+							ID        string `json:"id"`
+							Path      string `json:"path"`
+							BeginLine int    `json:"beginLine"`
+							EndLine   int    `json:"endLine"`
+						} `json:"node"`
+					} `json:"edges"`
+					PageInfo struct {
+						HasNextPage bool   `json:"hasNextPage"`
+						EndCursor   string `json:"endCursor"`
+					} `json:"pageInfo"`
+				} `json:"occurrences"`
+			} `json:"node"`
+		}
+
+		if err := json.Unmarshal(data, &result); err != nil {
+			return nil, fmt.Errorf("failed to parse occurrences: %w", err)
+		}
+
+		for _, edge := range result.Node.Occurrences.Edges {
+			allOccurrences = append(allOccurrences, Occurrence{
+				ID:        edge.Node.ID,
+				Path:      edge.Node.Path,
+				BeginLine: edge.Node.BeginLine,
+				EndLine:   edge.Node.EndLine,
+			})
+		}
+
+		if !result.Node.Occurrences.PageInfo.HasNextPage {
+			break
+		}
+		cursor = &result.Node.Occurrences.PageInfo.EndCursor
+	}
+
+	return allOccurrences, nil
+}
+
 // FetchIssues fetches issues from a repository
 func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *IssueFilter) ([]Issue, error) {
 	var allIssues []Issue
@@ -141,6 +209,10 @@ func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *Is
 										EndLine   int    `json:"endLine"`
 									} `json:"node"`
 								} `json:"edges"`
+								PageInfo struct {
+									HasNextPage bool   `json:"hasNextPage"`
+									EndCursor   string `json:"endCursor"`
+								} `json:"pageInfo"`
 							} `json:"occurrences"`
 						} `json:"node"`
 					} `json:"edges"`
@@ -158,16 +230,38 @@ func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *Is
 
 		for _, edge := range result.Repository.Issues.Edges {
 			node := edge.Node
+			
+			// Collect occurrences from first page
+			var occurrences []Occurrence
 			for _, occ := range node.Occurrences.Edges {
+				occurrences = append(occurrences, Occurrence{
+					ID:        occ.Node.ID,
+					Path:      occ.Node.Path,
+					BeginLine: occ.Node.BeginLine,
+					EndLine:   occ.Node.EndLine,
+				})
+			}
+			
+			// If there are more occurrences, fetch them with pagination
+			if node.Occurrences.PageInfo.HasNextPage {
+				moreOccurrences, err := c.fetchOccurrences(ctx, node.ID)
+				if err != nil {
+					return nil, fmt.Errorf("failed to fetch additional occurrences: %w", err)
+				}
+				// Replace with full list (fetchOccurrences gets all pages)
+				occurrences = moreOccurrences
+			}
+			
+			for _, occ := range occurrences {
 				issue := Issue{
-					ID:          occ.Node.ID,
+					ID:          occ.ID,
 					Title:       node.Issue.Title,
 					Category:    node.Issue.Category,
 					Shortcode:   node.Issue.Shortcode,
 					Severity:    node.Issue.Severity,
-					FilePath:    occ.Node.Path,
-					BeginLine:   occ.Node.BeginLine,
-					EndLine:     occ.Node.EndLine,
+					FilePath:    occ.Path,
+					BeginLine:   occ.BeginLine,
+					EndLine:     occ.EndLine,
 					Description: node.Issue.Description,
 					Analyzer:    node.Issue.Analyzer.Shortcode,
 				}
