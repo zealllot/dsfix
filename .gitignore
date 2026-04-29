@@ -1,11 +1,14 @@
-# Binary
-/dsfix
-
-# Task store
+# DSFix runtime state in user repos (when this repo is the user repo)
 .dsfix/
-
-# Config with secrets (use template instead)
 .dsfix.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
 
 # IDE
 .idea/

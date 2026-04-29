@@ -1,65 +1,65 @@
 # DSFix
 
-Turn DeepSource issues into per-shortcode batch tasks for an AI assistant (Claude Code, Cursor, Windsurf/Cascade, …) to fix one type at a time, then commit.
+A Claude Code plugin that batches DeepSource code-quality issues by shortcode and walks Claude through fixing each type with one commit per type.
+
+中文版：[README_zh.md](./README_zh.md)
 
 ## Why
 
-DeepSource often surfaces hundreds of issues. Fixing them one PR at a time is slow; fixing them all at once produces unreviewable diffs. DSFix batches issues by **shortcode** (e.g. `RVV-B0012`) so each commit is one issue type across however many files.
+DeepSource often surfaces hundreds of issues. Fixing them one PR at a time is slow; fixing them all at once produces unreviewable diffs. DSFix groups issues by **shortcode** (e.g. `RVV-B0012`) so each commit is one issue type across however many files.
+
+DSFix is delivered as a Claude Code plugin: install it once, and Claude can drive the whole sync → fix → commit loop with you in plain conversation.
 
 ## Install
 
-```bash
-go install github.com/zealllot/dsfix/cmd/dsfix@latest
+```
+/plugin marketplace add github:zealllot/dsfix
+/plugin install dsfix@zealllot-tools
 ```
 
-Or build from source:
+Requires Python 3 and `PyYAML`. If pip refuses on a PEP 668 system (modern macOS / Ubuntu 24+), install with:
 
-```bash
-git clone https://github.com/zealllot/dsfix.git
-cd dsfix
-go build -o dsfix ./cmd/dsfix
+```
+pipx install PyYAML
+# or
+python3 -m pip install --break-system-packages PyYAML
 ```
 
-## Setup
+## Setup (per repo)
 
-1. Get a DeepSource Personal Access Token: <https://app.deepsource.io/settings/tokens>
-2. Export it (preferred over putting it in YAML):
+1. Get a DeepSource Personal Access Token: <https://app.deepsource.io/settings/tokens> (each user gets their own — don't share).
+2. Export it:
    ```bash
    export DEEPSOURCE_API_TOKEN="..."
    ```
-3. In your project repo:
-   ```bash
-   dsfix init
-   ```
-4. Edit `.dsfix.yaml` — set `repository.owner` and `repository.name`, plus any `filter` you want.
+3. In your project, ask Claude:
+   > Run dsfix init
 
-## Claude Code integration (recommended)
+   That writes a `.dsfix.yaml` template — fill in `repository.owner` and `repository.name`, plus any filters you want.
 
-```bash
-dsfix init-claude
-```
+## Use
 
-This drops:
-- `.claude/commands/dsfix.md` — a `/dsfix` slash command that walks Claude through the full flow
-- `.claude/agents/dsfix-fixer.md` — an optional subagent for delegating large batches
+Just talk to Claude:
 
-Then in Claude Code, just type `/dsfix`. Claude lists the pending issue types, asks which to handle, applies the fix, runs verify, asks you to confirm, and commits.
+> Fix the DeepSource issues in this repo
 
-## Usage (any AI assistant or manual)
+Or invoke explicitly:
 
-```bash
-dsfix sync                      # Fetch issues from DeepSource
-dsfix start                     # Show task list grouped by shortcode
-dsfix batch SCC-S1039           # Output a fix prompt for one shortcode (also marks tasks in_progress)
-                                # → AI applies fixes, runs verify
-dsfix complete-batch            # Stage modified files and commit
-# or
-dsfix skip-batch                # Revert and mark tasks as skipped
-```
+> /dsfix
 
-For one-at-a-time mode: `dsfix next` / `dsfix complete` / `dsfix skip`.
+Claude will:
+1. Run `dsfix start` and show you the table of pending issue types.
+2. Wait for you to pick a number or shortcode.
+3. Run `dsfix batch <shortcode>`, apply the same fix pattern to every occurrence.
+4. Run the verify command (configured or auto-picked).
+5. Show you a summary and the suggested commit message.
+6. On confirm: `dsfix complete-batch` (auto-stage + commit). On reject: `dsfix skip-batch` (auto-revert).
 
-## Configuration reference
+Repeat until you're done.
+
+## Configuration
+
+`.dsfix.yaml` in your repo root. Full reference: [`plugins/dsfix/skills/dsfix/references/config.md`](./plugins/dsfix/skills/dsfix/references/config.md).
 
 ```yaml
 deepsource:
@@ -73,41 +73,38 @@ filter:
   categories: []                 # Bug Risk, Anti-pattern, Security, Performance, Typecheck, Style, Documentation
   severities: []                 # critical, major, minor
   limit:                         # Max issues to fetch; empty = unlimited
-  paths_include: []              # Globs; if non-empty, only matching paths kept (e.g. ["internal/**"])
-  paths_exclude: []              # Globs; matching paths dropped (e.g. ["vendor/**", "**/*_test.go"])
+  paths_include: []              # Globs with ** support; e.g. ["internal/**"]
+  paths_exclude: []              # e.g. ["vendor/**", "**/*_test.go"]
 
 verify:
-  command: ""                    # Run after each fix to verify, e.g. "go build ./..." — empty = AI picks
+  command: ""                    # e.g. "go build ./..."; empty = AI picks
 ```
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `dsfix init` | Create `.dsfix.yaml` template |
-| `dsfix init-claude` | Scaffold `.claude/commands/dsfix.md` + `.claude/agents/dsfix-fixer.md` |
-| `dsfix sync` | Fetch issues from DeepSource |
-| `dsfix status` | Print task counts |
-| `dsfix start` | Show task list grouped by shortcode (auto-syncs if empty) |
-| `dsfix list` | Same as `start` minus the AI-friendly framing |
-| `dsfix batch <shortcode>` | Output fix prompt for one shortcode, mark tasks `in_progress` |
-| `dsfix complete-batch` | Stage `in_progress` files, commit, mark `fixed` |
-| `dsfix skip-batch` | Revert `in_progress` files, mark `skipped` |
-| `dsfix next` | Output a single task prompt |
-| `dsfix complete` | Commit current single task |
-| `dsfix skip` | Revert and skip current single task |
-| `dsfix reset-progress` | Reset stuck `in_progress` tasks back to `pending` |
-| `dsfix reset` | Reset all tasks to `pending` |
-| `dsfix run` | Legacy interactive terminal-driven mode |
 
 ## Files
 
+- `.claude-plugin/marketplace.json` — registers this repo as a Claude Code marketplace
+- `plugins/dsfix/` — the plugin itself
+  - `.claude-plugin/plugin.json` — plugin manifest
+  - `skills/dsfix/SKILL.md` — main skill entrypoint
+  - `skills/dsfix/references/` — workflow / config / api-token detail
+  - `skills/dsfix/scripts/` — Python implementation (no Go runtime needed)
+  - `commands/dsfix.md` — `/dsfix` slash command
+  - `agents/dsfix-fixer.md` — subagent for delegating large batches
+
+## Architecture
+
+`dsfix.py` exposes a CLI mirroring the original Go binary. Claude Code calls it via Bash. The skill description triggers automatic activation when DeepSource is mentioned; the slash command is for explicit invocation. The subagent is optional for very large batches.
+
+## Migration from the Go version
+
+The Go binary at `v0-go-final` (and earlier tags) still works:
+
+```bash
+git checkout v0-go-final
+go install ./cmd/dsfix
 ```
-.dsfix.yaml                     # Config (gitignore this — has secrets)
-.dsfix/tasks.json               # Task state (gitignore this)
-.claude/commands/dsfix.md       # Optional: created by init-claude
-.claude/agents/dsfix-fixer.md   # Optional: created by init-claude
-```
+
+`main` after this commit is plugin-only. The Go binary is no longer maintained.
 
 ## License
 
