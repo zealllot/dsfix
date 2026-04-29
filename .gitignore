@@ -13,6 +13,9 @@
 *.swp
 *.swo
 
+# Claude Code local settings (personal, gitignored)
+.claude/settings.local.json
+
 # OS
 .DS_Store
 Thumbs.db
