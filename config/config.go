@@ -3,46 +3,47 @@ package config
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
 
-const (
-	DefaultConfigFile = ".dsfix.yaml"
-)
+const DefaultConfigFile = ".dsfix.yaml"
 
-// Config represents the dsfix configuration
+// Config represents the dsfix configuration.
 type Config struct {
-	// DeepSource configuration
 	DeepSource DeepSourceConfig `yaml:"deepsource"`
-
-	// Repository configuration
 	Repository RepositoryConfig `yaml:"repository"`
-
-	// Filter configuration
-	Filter FilterConfig `yaml:"filter"`
+	Filter     FilterConfig     `yaml:"filter"`
+	Verify     VerifyConfig     `yaml:"verify"`
 }
 
-// DeepSourceConfig contains DeepSource API settings
+// DeepSourceConfig contains DeepSource API settings.
 type DeepSourceConfig struct {
 	APIToken string `yaml:"api_token"` // Can also be set via DEEPSOURCE_API_TOKEN env var
 }
 
-// RepositoryConfig contains repository settings
+// RepositoryConfig contains repository settings.
 type RepositoryConfig struct {
-	Owner string `yaml:"owner"` // GitHub owner/organization
+	Owner string `yaml:"owner"` // VCS owner/organization
 	Name  string `yaml:"name"`  // Repository name
 }
 
-// FilterConfig contains issue filter settings
+// FilterConfig contains issue filter settings.
 type FilterConfig struct {
-	Categories []string `yaml:"categories"` // Bug Risk, Anti-pattern, Security, etc.
-	Severities []string `yaml:"severities"` // critical, major, minor
-	Limit      int      `yaml:"limit"`      // Maximum number of issues to fetch
+	Categories   []string `yaml:"categories"`              // Bug Risk, Anti-pattern, Security, etc.
+	Severities   []string `yaml:"severities"`              // critical, major, minor
+	Limit        int      `yaml:"limit"`                   // Maximum number of issues to fetch
+	PathsInclude []string `yaml:"paths_include,omitempty"` // glob patterns; if non-empty, only matching paths are kept
+	PathsExclude []string `yaml:"paths_exclude,omitempty"` // glob patterns; matching paths are dropped
 }
 
-// Load loads configuration from a file
+// VerifyConfig contains the post-fix verification command.
+type VerifyConfig struct {
+	Command string `yaml:"command"` // e.g. "go build ./..." or "pnpm typecheck"; empty means let the AI choose
+}
+
+// Load reads configuration from a file. Token is overridden by DEEPSOURCE_API_TOKEN env var.
+// If a token is found in the YAML, a one-line warning is written to stderr.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -54,7 +55,9 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// Override with environment variables
+	if cfg.DeepSource.APIToken != "" && os.Getenv("DEEPSOURCE_API_TOKEN") == "" {
+		fmt.Fprintf(os.Stderr, "warning: api_token in %s is a secret — prefer DEEPSOURCE_API_TOKEN env var\n", path)
+	}
 	if token := os.Getenv("DEEPSOURCE_API_TOKEN"); token != "" {
 		cfg.DeepSource.APIToken = token
 	}
@@ -62,63 +65,30 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// LoadFromDir loads configuration from a directory
-func LoadFromDir(dir string) (*Config, error) {
-	configPath := filepath.Join(dir, DefaultConfigFile)
-	return Load(configPath)
-}
-
-// Save saves configuration to a file
-func (c *Config) Save(path string) error {
-	data, err := yaml.Marshal(c)
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
-	}
-
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
-	}
-
-	return nil
-}
-
-// Validate validates the configuration
+// Validate validates the configuration.
 func (c *Config) Validate() error {
 	if c.DeepSource.APIToken == "" {
 		return fmt.Errorf("DeepSource API token is required (set in config or DEEPSOURCE_API_TOKEN env var)")
 	}
-
 	if c.Repository.Owner == "" {
 		return fmt.Errorf("repository owner is required")
 	}
-
 	if c.Repository.Name == "" {
 		return fmt.Errorf("repository name is required")
 	}
-
 	return nil
 }
 
-// DefaultConfig returns a default configuration
-func DefaultConfig() *Config {
-	return &Config{
-		DeepSource: DeepSourceConfig{},
-		Repository: RepositoryConfig{},
-		Filter:     FilterConfig{},
-	}
-}
-
-// GenerateTemplate generates a configuration template
+// GenerateTemplate generates a configuration template.
 func GenerateTemplate() string {
 	return `# DSFix Configuration
-# DeepSource + Windsurf Integration
 
 deepsource:
-  # API token for DeepSource (or set DEEPSOURCE_API_TOKEN env var)
+  # Prefer setting DEEPSOURCE_API_TOKEN env var instead of putting the token here.
   api_token: ""
 
 repository:
-  # GitHub owner/organization
+  # VCS owner/organization
   owner: ""
   # Repository name
   name: ""
@@ -127,12 +97,24 @@ filter:
   # Categories to include (leave empty for all)
   # Options: Bug Risk, Anti-pattern, Security, Performance, Typecheck, Style, Documentation
   categories: []
-  
+
   # Severities to include (leave empty for all)
   # Options: critical, major, minor
   severities: []
-  
+
   # Maximum number of issues to fetch (leave empty for unlimited)
   limit:
+
+  # Optional path glob filters. Leave empty for all.
+  # Examples:
+  #   paths_include: ["internal/**", "cmd/**"]
+  #   paths_exclude: ["vendor/**", "**/*_test.go"]
+  paths_include: []
+  paths_exclude: []
+
+verify:
+  # Command run after a fix to verify it compiles/passes. Leave empty to let the AI pick.
+  # Examples: "go build ./...", "pnpm typecheck", "make lint"
+  command: ""
 `
 }

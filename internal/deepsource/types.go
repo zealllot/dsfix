@@ -20,10 +20,12 @@ type Issue struct {
 
 // IssueFilter defines filters for fetching issues
 type IssueFilter struct {
-	Categories []string // Bug Risk, Anti-pattern, Security, Performance, etc.
-	Severities []string // critical, major, minor
-	Limit      int
-	Offset     int
+	Categories   []string // Bug Risk, Anti-pattern, Security, Performance, etc.
+	Severities   []string // critical, major, minor
+	Limit        int
+	Offset       int
+	PathsInclude []string // glob patterns; if non-empty, occurrence path must match one
+	PathsExclude []string // glob patterns; occurrence is dropped if path matches one
 }
 
 // Repository represents a DeepSource repository

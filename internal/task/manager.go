@@ -1,11 +1,11 @@
 package task
 
 import (
-"context"
-"fmt"
-"sort"
+	"context"
+	"fmt"
+	"sort"
 
-"github.com/zealllot/dsfix/internal/deepsource"
+	"github.com/zealllot/dsfix/internal/deepsource"
 )
 
 // Manager handles task operations
@@ -50,6 +50,15 @@ func (m *Manager) Sync(ctx context.Context, filter *deepsource.IssueFilter) (int
 	}
 
 	return newCount, nil
+}
+
+// GetTask returns the task with the given ID, or an error if not found.
+func (m *Manager) GetTask(id string) (*Task, error) {
+	t, ok := m.store.Get(id)
+	if !ok {
+		return nil, fmt.Errorf("task not found: %s", id)
+	}
+	return t, nil
 }
 
 // GetNextTask returns the next task to process (pending or in_progress)
@@ -135,10 +144,10 @@ func (m *Manager) GetAllTasks() []*Task {
 	}
 
 	sort.Slice(tasks, func(i, j int) bool {
-si := severityOrder[tasks[i].Issue.Severity]
-sj := severityOrder[tasks[j].Issue.Severity]
-if si != sj {
-return si < sj
+		si := severityOrder[tasks[i].Issue.Severity]
+		sj := severityOrder[tasks[j].Issue.Severity]
+		if si != sj {
+			return si < sj
 		}
 		return tasks[i].Issue.Category < tasks[j].Issue.Category
 	})
@@ -160,7 +169,7 @@ func (m *Manager) GetTasksByShortcode(shortcode string) []*Task {
 	pending := m.store.GetByStatus(StatusPending)
 	inProgress := m.store.GetByStatus(StatusInProgress)
 	allTasks := append(pending, inProgress...)
-	
+
 	var filtered []*Task
 	for _, t := range allTasks {
 		if t.Issue.Shortcode == shortcode {
@@ -186,7 +195,7 @@ func (m *Manager) GetShortcodeStats() map[string]int {
 	pending := m.store.GetByStatus(StatusPending)
 	inProgress := m.store.GetByStatus(StatusInProgress)
 	tasks := append(pending, inProgress...)
-	
+
 	stats := make(map[string]int)
 	for _, t := range tasks {
 		stats[t.Issue.Shortcode]++
@@ -249,6 +258,17 @@ func (m *Manager) Reset() error {
 		task.ErrorMsg = ""
 		m.store.Update(task)
 	}
+	return m.store.Save()
+}
+
+// RevertToPending resets a single task back to pending status
+func (m *Manager) RevertToPending(taskID string) error {
+	task, ok := m.store.Get(taskID)
+	if !ok {
+		return fmt.Errorf("task not found: %s", taskID)
+	}
+	task.Status = StatusPending
+	m.store.Update(task)
 	return m.store.Save()
 }
 

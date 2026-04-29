@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
+	"slices"
+	"strings"
 )
 
 const (
@@ -32,7 +35,7 @@ func NewClient(apiToken string) *Client {
 // graphqlRequest represents a GraphQL request
 type graphqlRequest struct {
 	Query     string                 `json:"query"`
-	Variables map[string]interface{} `json:"variables,omitempty"`
+	Variables map[string]any `json:"variables,omitempty"`
 }
 
 // graphqlResponse represents a GraphQL response
@@ -44,7 +47,7 @@ type graphqlResponse struct {
 }
 
 // doRequest executes a GraphQL request
-func (c *Client) doRequest(ctx context.Context, query string, variables map[string]interface{}) (json.RawMessage, error) {
+func (c *Client) doRequest(ctx context.Context, query string, variables map[string]any) (json.RawMessage, error) {
 	reqBody := graphqlRequest{
 		Query:     query,
 		Variables: variables,
@@ -90,6 +93,58 @@ func (c *Client) doRequest(ctx context.Context, query string, variables map[stri
 	return gqlResp.Data, nil
 }
 
+// pathAllowed reports whether path passes the include/exclude glob filters.
+// If include is non-empty, the path must match at least one include pattern.
+// Then, the path is rejected if it matches any exclude pattern.
+func pathAllowed(path string, include, exclude []string) bool {
+	if len(include) > 0 {
+		matched := false
+		for _, pat := range include {
+			if matchPath(pat, path) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	for _, pat := range exclude {
+		if matchPath(pat, path) {
+			return false
+		}
+	}
+	return true
+}
+
+// matchPath is a slash-aware glob matcher that supports `**` (zero or more
+// path segments) in addition to filepath.Match's per-segment globbing.
+func matchPath(pattern, path string) bool {
+	return matchSegments(strings.Split(pattern, "/"), strings.Split(path, "/"))
+}
+
+func matchSegments(pat, path []string) bool {
+	if len(pat) == 0 {
+		return len(path) == 0
+	}
+	if pat[0] == "**" {
+		for j := 0; j <= len(path); j++ {
+			if matchSegments(pat[1:], path[j:]) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(path) == 0 {
+		return false
+	}
+	ok, _ := filepath.Match(pat[0], path[0])
+	if !ok {
+		return false
+	}
+	return matchSegments(pat[1:], path[1:])
+}
+
 // Occurrence represents a single occurrence
 type Occurrence struct {
 	ID        string
@@ -104,7 +159,7 @@ func (c *Client) fetchOccurrences(ctx context.Context, issueID string) ([]Occurr
 	var cursor *string
 
 	for {
-		variables := map[string]interface{}{
+		variables := map[string]any{
 			"issueId": issueID,
 			"first":   100,
 		}
@@ -169,7 +224,7 @@ func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *Is
 	}
 
 	for {
-		variables := map[string]interface{}{
+		variables := map[string]any{
 			"owner":    owner,
 			"name":     repo,
 			"provider": "GITHUB",
@@ -230,7 +285,7 @@ func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *Is
 
 		for _, edge := range result.Repository.Issues.Edges {
 			node := edge.Node
-			
+
 			// Collect occurrences from first page
 			var occurrences []Occurrence
 			for _, occ := range node.Occurrences.Edges {
@@ -241,7 +296,7 @@ func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *Is
 					EndLine:   occ.Node.EndLine,
 				})
 			}
-			
+
 			// If there are more occurrences, fetch them with pagination
 			if node.Occurrences.PageInfo.HasNextPage {
 				moreOccurrences, err := c.fetchOccurrences(ctx, node.ID)
@@ -251,7 +306,7 @@ func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *Is
 				// Replace with full list (fetchOccurrences gets all pages)
 				occurrences = moreOccurrences
 			}
-			
+
 			for _, occ := range occurrences {
 				issue := Issue{
 					ID:          occ.ID,
@@ -266,30 +321,14 @@ func (c *Client) FetchIssues(ctx context.Context, owner, repo string, filter *Is
 					Analyzer:    node.Issue.Analyzer.Shortcode,
 				}
 
-				// Apply category filter
-				if filter != nil && len(filter.Categories) > 0 {
-					matched := false
-					for _, cat := range filter.Categories {
-						if cat == issue.Category {
-							matched = true
-							break
-						}
-					}
-					if !matched {
+				if filter != nil {
+					if len(filter.Categories) > 0 && !slices.Contains(filter.Categories, issue.Category) {
 						continue
 					}
-				}
-
-				// Apply severity filter
-				if filter != nil && len(filter.Severities) > 0 {
-					matched := false
-					for _, sev := range filter.Severities {
-						if sev == issue.Severity {
-							matched = true
-							break
-						}
+					if len(filter.Severities) > 0 && !slices.Contains(filter.Severities, issue.Severity) {
+						continue
 					}
-					if !matched {
+					if !pathAllowed(issue.FilePath, filter.PathsInclude, filter.PathsExclude) {
 						continue
 					}
 				}

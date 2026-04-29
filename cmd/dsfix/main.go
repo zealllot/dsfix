@@ -1,50 +1,54 @@
 package main
 
 import (
-"context"
-"fmt"
-"os"
-"os/exec"
-"path/filepath"
-"sort"
-"strings"
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strings"
 
-"github.com/spf13/cobra"
-"github.com/zealllot/dsfix/config"
-"github.com/zealllot/dsfix/internal/cascade"
-"github.com/zealllot/dsfix/internal/deepsource"
-"github.com/zealllot/dsfix/internal/task"
+	"github.com/spf13/cobra"
+	"github.com/zealllot/dsfix/config"
+	"github.com/zealllot/dsfix/internal/claudeinit"
+	"github.com/zealllot/dsfix/internal/deepsource"
+	"github.com/zealllot/dsfix/internal/prompt"
+	"github.com/zealllot/dsfix/internal/task"
 )
 
 var (
-cfgFile  string
-repoPath string
+	cfgFile  string
+	repoPath string
 )
 
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "dsfix",
-		Short: "DeepSource + Windsurf integration tool",
-		Long:  "DSFix automatically fixes DeepSource issues using Windsurf/Cascade",
+		Short: "DeepSource fix workflow tool",
+		Long:  "DSFix turns DeepSource issues into per-shortcode batch tasks for an AI assistant to fix.",
 	}
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default is .dsfix.yaml)")
 	rootCmd.PersistentFlags().StringVarP(&repoPath, "repo", "r", "", "repository path (default is current directory)")
 
-	rootCmd.AddCommand(initCmd())
-	rootCmd.AddCommand(syncCmd())
-	rootCmd.AddCommand(runCmd())
-	rootCmd.AddCommand(statusCmd())
-	rootCmd.AddCommand(nextCmd())
-	rootCmd.AddCommand(completeCmd())
-	rootCmd.AddCommand(skipCmd())
-	rootCmd.AddCommand(resetCmd())
-	rootCmd.AddCommand(resetProgressCmd())
-	rootCmd.AddCommand(listCmd())
-	rootCmd.AddCommand(batchCmd())
-	rootCmd.AddCommand(completeBatchCmd())
-	rootCmd.AddCommand(skipBatchCmd())
-	rootCmd.AddCommand(startCmd())
+	rootCmd.AddCommand(
+		initCmd(),
+		initClaudeCmd(),
+		syncCmd(),
+		runCmd(),
+		statusCmd(),
+		nextCmd(),
+		completeCmd(),
+		skipCmd(),
+		resetCmd(),
+		resetProgressCmd(),
+		listCmd(),
+		batchCmd(),
+		completeBatchCmd(),
+		skipBatchCmd(),
+		startCmd(),
+	)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -52,17 +56,39 @@ func main() {
 	}
 }
 
+// session bundles the per-command state every command needs.
+type session struct {
+	cfg     *config.Config
+	manager *task.Manager
+	repo    string
+}
+
+// newSession loads config, opens the task store, and builds a manager.
+// It does NOT call Validate() — commands that need a valid token (sync, etc.) call it explicitly.
+func newSession() (*session, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, err
+	}
+	repo := getRepoPath()
+	store, err := task.NewStore(repo)
+	if err != nil {
+		return nil, err
+	}
+	client := deepsource.NewClient(cfg.DeepSource.APIToken)
+	manager := task.NewManager(store, client, cfg.Repository.Owner, cfg.Repository.Name)
+	return &session{cfg: cfg, manager: manager, repo: repo}, nil
+}
+
 func loadConfig() (*config.Config, error) {
 	path := cfgFile
 	if path == "" {
-		if repoPath != "" {
-			path = filepath.Join(repoPath, config.DefaultConfigFile)
-		} else {
-			cwd, _ := os.Getwd()
-			path = filepath.Join(cwd, config.DefaultConfigFile)
+		base := repoPath
+		if base == "" {
+			base, _ = os.Getwd()
 		}
+		path = filepath.Join(base, config.DefaultConfigFile)
 	}
-
 	return config.Load(path)
 }
 
@@ -74,23 +100,56 @@ func getRepoPath() string {
 	return cwd
 }
 
+func filterFromConfig(cfg *config.Config) *deepsource.IssueFilter {
+	return &deepsource.IssueFilter{
+		Categories:   cfg.Filter.Categories,
+		Severities:   cfg.Filter.Severities,
+		Limit:        cfg.Filter.Limit,
+		PathsInclude: cfg.Filter.PathsInclude,
+		PathsExclude: cfg.Filter.PathsExclude,
+	}
+}
+
+func initClaudeCmd() *cobra.Command {
+	var force bool
+	cmd := &cobra.Command{
+		Use:   "init-claude",
+		Short: "Scaffold Claude Code integration files (slash command + subagent)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			written, skipped, err := claudeinit.Scaffold(getRepoPath(), force)
+			if err != nil {
+				return err
+			}
+			for _, p := range written {
+				fmt.Printf("✅ Wrote %s\n", p)
+			}
+			for _, p := range skipped {
+				fmt.Printf("⏭  Skipped %s (already exists, pass --force to overwrite)\n", p)
+			}
+			if len(written) > 0 {
+				fmt.Println("\nIn Claude Code, type /dsfix to start the workflow.")
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
+	return cmd
+}
+
 func initCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
 		Short: "Initialize dsfix configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := filepath.Join(getRepoPath(), config.DefaultConfigFile)
-
 			if _, err := os.Stat(path); err == nil {
 				return fmt.Errorf("config file already exists: %s", path)
 			}
-
 			if err := os.WriteFile(path, []byte(config.GenerateTemplate()), 0644); err != nil {
 				return fmt.Errorf("failed to create config file: %w", err)
 			}
-
 			fmt.Printf("Created config file: %s\n", path)
-			fmt.Println("Please edit the config file and add your DeepSource API token.")
+			fmt.Println("Edit it and add your DeepSource API token (or set DEEPSOURCE_API_TOKEN env var).")
 			return nil
 		},
 	}
@@ -101,38 +160,20 @@ func syncCmd() *cobra.Command {
 		Use:   "sync",
 		Short: "Sync issues from DeepSource",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			s, err := newSession()
 			if err != nil {
 				return err
 			}
-
-			if err := cfg.Validate(); err != nil {
+			if err := s.cfg.Validate(); err != nil {
 				return err
 			}
-
-			client := deepsource.NewClient(cfg.DeepSource.APIToken)
-
-			store, err := task.NewStore(getRepoPath())
-			if err != nil {
-				return err
-			}
-
-			manager := task.NewManager(store, client, cfg.Repository.Owner, cfg.Repository.Name)
-
-			filter := &deepsource.IssueFilter{
-				Categories: cfg.Filter.Categories,
-				Severities: cfg.Filter.Severities,
-				Limit:      cfg.Filter.Limit,
-			}
-
 			fmt.Println("Fetching issues from DeepSource...")
-			count, err := manager.Sync(context.Background(), filter)
+			count, err := s.manager.Sync(context.Background(), filterFromConfig(s.cfg))
 			if err != nil {
 				return err
 			}
-
 			fmt.Printf("Synced %d new issues.\n", count)
-			printStats(manager)
+			printStats(s.manager)
 			return nil
 		},
 	}
@@ -141,27 +182,16 @@ func syncCmd() *cobra.Command {
 func runCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "run",
-		Short: "Run interactive fix process",
+		Short: "Run interactive fix process (legacy terminal-driven mode)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			s, err := newSession()
 			if err != nil {
 				return err
 			}
-
-			if err := cfg.Validate(); err != nil {
+			if err := s.cfg.Validate(); err != nil {
 				return err
 			}
-
-			client := deepsource.NewClient(cfg.DeepSource.APIToken)
-
-			store, err := task.NewStore(getRepoPath())
-			if err != nil {
-				return err
-			}
-
-			manager := task.NewManager(store, client, cfg.Repository.Owner, cfg.Repository.Name)
-			executor := cascade.NewExecutor(manager, getRepoPath())
-
+			executor := prompt.NewExecutor(s.manager, s.repo, s.cfg.Verify.Command)
 			return executor.RunInteractive()
 		},
 	}
@@ -172,20 +202,11 @@ func statusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Show current status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			s, err := newSession()
 			if err != nil {
 				return err
 			}
-
-			client := deepsource.NewClient(cfg.DeepSource.APIToken)
-
-			store, err := task.NewStore(getRepoPath())
-			if err != nil {
-				return err
-			}
-
-			manager := task.NewManager(store, client, cfg.Repository.Owner, cfg.Repository.Name)
-			printStats(manager)
+			printStats(s.manager)
 			return nil
 		},
 	}
@@ -196,22 +217,11 @@ func listCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List pending issues grouped by type",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			s, err := newSession()
 			if err != nil {
 				return err
 			}
-
-			client := deepsource.NewClient(cfg.DeepSource.APIToken)
-
-			store, err := task.NewStore(getRepoPath())
-			if err != nil {
-				return err
-			}
-
-			manager := task.NewManager(store, client, cfg.Repository.Owner, cfg.Repository.Name)
-			tasks := manager.GetPendingTasks()
-
-			fmt.Println(cascade.GenerateGroupStats(tasks))
+			fmt.Println(prompt.GenerateGroupStats(s.manager.GetPendingTasks()))
 			return nil
 		},
 	}
@@ -220,46 +230,27 @@ func listCmd() *cobra.Command {
 func startCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "start",
-		Short: "Show task list and let AI guide you through fixing",
+		Short: "Show task list and let the AI guide the fix flow",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			s, err := newSession()
 			if err != nil {
 				return err
 			}
 
-			client := deepsource.NewClient(cfg.DeepSource.APIToken)
-
-			store, err := task.NewStore(getRepoPath())
-			if err != nil {
-				return err
-			}
-
-			manager := task.NewManager(store, client, cfg.Repository.Owner, cfg.Repository.Name)
-			tasks := manager.GetPendingTasks()
-
-			// If no pending tasks, try to sync from DeepSource
+			tasks := s.manager.GetPendingTasks()
 			if len(tasks) == 0 {
 				fmt.Println("No pending tasks. Syncing from DeepSource...")
-
-				if err := cfg.Validate(); err != nil {
+				if err := s.cfg.Validate(); err != nil {
 					return err
 				}
-
-				filter := &deepsource.IssueFilter{
-					Categories: cfg.Filter.Categories,
-					Severities: cfg.Filter.Severities,
-					Limit:      cfg.Filter.Limit,
-				}
-
-				count, err := manager.Sync(context.Background(), filter)
+				count, err := s.manager.Sync(context.Background(), filterFromConfig(s.cfg))
 				if err != nil {
 					return err
 				}
-
 				fmt.Printf("Synced %d new issues.\n\n", count)
 			}
 
-			fmt.Println(cascade.GenerateStartPrompt(manager.GetAllTasks()))
+			fmt.Println(prompt.GenerateStartPrompt(s.manager.GetAllTasks()))
 			return nil
 		},
 	}
@@ -268,32 +259,20 @@ func startCmd() *cobra.Command {
 func nextCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "next",
-		Short: "Output the next task for Cascade to fix",
+		Short: "Output the next task for the AI to fix",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			s, err := newSession()
 			if err != nil {
 				return err
 			}
-
-			client := deepsource.NewClient(cfg.DeepSource.APIToken)
-
-			store, err := task.NewStore(getRepoPath())
+			executor := prompt.NewExecutor(s.manager, s.repo, s.cfg.Verify.Command)
+			t, err := executor.OutputTask()
 			if err != nil {
 				return err
 			}
-
-			manager := task.NewManager(store, client, cfg.Repository.Owner, cfg.Repository.Name)
-			executor := cascade.NewExecutor(manager, getRepoPath())
-
-			t, err := executor.OutputTaskForCascade()
-			if err != nil {
-				return err
-			}
-
 			if t == nil {
 				fmt.Println("No pending tasks.")
 			}
-
 			return nil
 		},
 	}
@@ -308,50 +287,33 @@ func batchCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			shortcode := args[0]
-
-			cfg, err := loadConfig()
+			s, err := newSession()
 			if err != nil {
 				return err
 			}
 
-			client := deepsource.NewClient(cfg.DeepSource.APIToken)
-
-			store, err := task.NewStore(getRepoPath())
-			if err != nil {
-				return err
-			}
-
-			manager := task.NewManager(store, client, cfg.Repository.Owner, cfg.Repository.Name)
-			tasks := manager.GetTasksByShortcode(shortcode)
-
+			tasks := s.manager.GetTasksByShortcode(shortcode)
 			if len(tasks) == 0 {
 				fmt.Printf("No pending tasks with shortcode: %s\n", shortcode)
 				return nil
 			}
-
-			// Apply limit only if specified
 			if limit > 0 && len(tasks) > limit {
 				tasks = tasks[:limit]
 			}
 
-			// Mark all as in progress
-			var taskIDs []string
+			taskIDs := make([]string, 0, len(tasks))
 			for _, t := range tasks {
 				taskIDs = append(taskIDs, t.ID)
 			}
-			if err := manager.StartBatch(taskIDs); err != nil {
+			if err := s.manager.StartBatch(taskIDs); err != nil {
 				return err
 			}
 
-			// Output batch prompt
-			fmt.Println(cascade.GenerateBatchFixPrompt(tasks, getRepoPath()))
-
+			fmt.Println(prompt.GenerateBatchFixPrompt(tasks, s.cfg.Verify.Command))
 			return nil
 		},
 	}
-
 	cmd.Flags().IntVarP(&limit, "limit", "l", 0, "limit number of tasks (default: all)")
-
 	return cmd
 }
 
@@ -364,81 +326,43 @@ func completeCmd() *cobra.Command {
 		Use:   "complete",
 		Short: "Mark current task as completed and commit changes",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			s, err := newSession()
 			if err != nil {
 				return err
 			}
 
-			client := deepsource.NewClient(cfg.DeepSource.APIToken)
-
-			store, err := task.NewStore(getRepoPath())
+			t, err := resolveInProgressTask(s.manager, taskID)
 			if err != nil {
 				return err
 			}
-
-			manager := task.NewManager(store, client, cfg.Repository.Owner, cfg.Repository.Name)
-
-			// Find the in-progress task if no ID specified
-			if taskID == "" {
-				tasks := store.GetByStatus(task.StatusInProgress)
-				if len(tasks) == 0 {
-					return fmt.Errorf("no task in progress")
-				}
-				taskID = tasks[0].ID
-			}
-
-			t, ok := store.Get(taskID)
-			if !ok {
-				return fmt.Errorf("task not found: %s", taskID)
-			}
-
 			if commitMsg == "" {
 				commitMsg = t.GenerateCommitMessage()
 			}
 
-			var commitHash string
+			commitHash := "no-commit"
 			if !noCommit {
-				// Stage the file
-				stageCmd := exec.Command("git", "add", t.Issue.FilePath)
-				stageCmd.Dir = getRepoPath()
-				if output, err := stageCmd.CombinedOutput(); err != nil {
-					return fmt.Errorf("failed to stage file: %w\n%s", err, string(output))
+				if err := stageFiles(s.repo, []string{t.Issue.FilePath}); err != nil {
+					return err
 				}
-
-				// Create commit
-				gitCommitCmd := exec.Command("git", "commit", "-m", commitMsg)
-				gitCommitCmd.Dir = getRepoPath()
-				if output, err := gitCommitCmd.CombinedOutput(); err != nil {
-					return fmt.Errorf("failed to commit: %w\n%s", err, string(output))
-				}
-
-				// Get commit hash
-				hashCmd := exec.Command("git", "rev-parse", "--short", "HEAD")
-				hashCmd.Dir = getRepoPath()
-				hashOutput, err := hashCmd.Output()
+				h, err := gitCommit(s.repo, commitMsg)
 				if err != nil {
-					return fmt.Errorf("failed to get commit hash: %w", err)
+					return err
 				}
-				commitHash = strings.TrimSpace(string(hashOutput))
+				commitHash = h
 				fmt.Printf("✅ Committed: %s\n", commitHash)
-			} else {
-				commitHash = "no-commit"
 			}
 
-			if err := manager.CompleteTask(taskID, commitHash, commitMsg); err != nil {
+			if err := s.manager.CompleteTask(t.ID, commitHash, commitMsg); err != nil {
 				return err
 			}
-
 			fmt.Printf("Task completed: %s\n", t.Issue.Title)
 			fmt.Printf("Commit message: %s\n", commitMsg)
 			return nil
 		},
 	}
-
 	cmd.Flags().StringVarP(&taskID, "id", "i", "", "task ID (default: current in-progress task)")
 	cmd.Flags().StringVarP(&commitMsg, "message", "m", "", "commit message")
 	cmd.Flags().BoolVar(&noCommit, "no-commit", false, "skip git commit")
-
 	return cmd
 }
 
@@ -450,90 +374,46 @@ func completeBatchCmd() *cobra.Command {
 		Use:   "complete-batch",
 		Short: "Mark all in-progress tasks as completed and commit changes",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			s, err := newSession()
 			if err != nil {
 				return err
 			}
 
-			client := deepsource.NewClient(cfg.DeepSource.APIToken)
-
-			store, err := task.NewStore(getRepoPath())
-			if err != nil {
-				return err
-			}
-
-			manager := task.NewManager(store, client, cfg.Repository.Owner, cfg.Repository.Name)
-
-			tasks := manager.GetInProgressTasks()
+			tasks := s.manager.GetInProgressTasks()
 			if len(tasks) == 0 {
 				return fmt.Errorf("no tasks in progress")
 			}
 
-			// Collect unique files and task IDs
-			filesMap := make(map[string]bool)
-			var taskIDs []string
-			for _, t := range tasks {
-				filesMap[t.Issue.FilePath] = true
-				taskIDs = append(taskIDs, t.ID)
-			}
-
-			var files []string
-			for f := range filesMap {
-				files = append(files, f)
-			}
-			sort.Strings(files)
-
-			// Generate commit message if not provided
+			files, taskIDs := uniqueFilesAndIDs(tasks)
 			if commitMsg == "" {
 				first := tasks[0]
 				commitMsg = fmt.Sprintf("fix(%s): %s (%d occurrences)", first.Issue.Shortcode, first.Issue.Title, len(tasks))
 			}
 
-			var commitHash string
+			commitHash := "no-commit"
 			if !noCommit {
-				// Stage all files
-				for _, f := range files {
-					stageCmd := exec.Command("git", "add", f)
-					stageCmd.Dir = getRepoPath()
-					if output, err := stageCmd.CombinedOutput(); err != nil {
-						fmt.Printf("Warning: failed to stage %s: %v\n%s", f, err, string(output))
-					}
+				if err := stageFiles(s.repo, files); err != nil {
+					return err
 				}
-
-				// Create commit
-				gitCommitCmd := exec.Command("git", "commit", "-m", commitMsg)
-				gitCommitCmd.Dir = getRepoPath()
-				if output, err := gitCommitCmd.CombinedOutput(); err != nil {
-					return fmt.Errorf("failed to commit: %w\n%s", err, string(output))
-				}
-
-				// Get commit hash
-				hashCmd := exec.Command("git", "rev-parse", "--short", "HEAD")
-				hashCmd.Dir = getRepoPath()
-				hashOutput, err := hashCmd.Output()
+				h, err := gitCommit(s.repo, commitMsg)
 				if err != nil {
-					return fmt.Errorf("failed to get commit hash: %w", err)
+					return err
 				}
-				commitHash = strings.TrimSpace(string(hashOutput))
+				commitHash = h
 				fmt.Printf("✅ Committed: %s\n", commitHash)
-			} else {
-				commitHash = "no-commit"
 			}
 
-			if err := manager.CompleteBatch(taskIDs, commitHash, commitMsg); err != nil {
+			if err := s.manager.CompleteBatch(taskIDs, commitHash, commitMsg); err != nil {
 				return err
 			}
-
 			fmt.Printf("Batch completed: %d tasks\n", len(tasks))
 			fmt.Printf("Files modified: %d\n", len(files))
 			fmt.Printf("Commit message: %s\n", commitMsg)
 			return nil
 		},
 	}
-
 	cmd.Flags().StringVarP(&commitMsg, "message", "m", "", "commit message")
 	cmd.Flags().BoolVar(&noCommit, "no-commit", false, "skip git commit")
-
 	return cmd
 }
 
@@ -546,58 +426,32 @@ func skipCmd() *cobra.Command {
 		Use:   "skip",
 		Short: "Skip current task and revert changes",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			s, err := newSession()
 			if err != nil {
 				return err
 			}
 
-			client := deepsource.NewClient(cfg.DeepSource.APIToken)
-
-			store, err := task.NewStore(getRepoPath())
+			t, err := resolveInProgressTask(s.manager, taskID)
 			if err != nil {
 				return err
 			}
-
-			manager := task.NewManager(store, client, cfg.Repository.Owner, cfg.Repository.Name)
-
-			// Find the in-progress task if no ID specified
-			if taskID == "" {
-				tasks := store.GetByStatus(task.StatusInProgress)
-				if len(tasks) == 0 {
-					return fmt.Errorf("no task in progress")
-				}
-				taskID = tasks[0].ID
-			}
-
-			t, ok := store.Get(taskID)
-			if !ok {
-				return fmt.Errorf("task not found: %s", taskID)
-			}
-
-			// Revert changes to the file
 			if !noRevert {
-				revertCmd := exec.Command("git", "checkout", "--", t.Issue.FilePath)
-				revertCmd.Dir = getRepoPath()
-				if output, err := revertCmd.CombinedOutput(); err != nil {
-					fmt.Printf("Warning: failed to revert file %s: %v\n%s", t.Issue.FilePath, err, string(output))
+				if err := gitRevert(s.repo, []string{t.Issue.FilePath}); err != nil {
+					fmt.Printf("Warning: %v\n", err)
 				} else {
 					fmt.Printf("🔄 Reverted: %s\n", t.Issue.FilePath)
 				}
 			}
-
-			if err := manager.SkipTask(taskID, reason); err != nil {
+			if err := s.manager.SkipTask(t.ID, reason); err != nil {
 				return err
 			}
-
 			fmt.Printf("Task skipped: %s\n", t.Issue.Title)
 			return nil
 		},
 	}
-
 	cmd.Flags().StringVarP(&taskID, "id", "i", "", "task ID (default: current in-progress task)")
 	cmd.Flags().StringVarP(&reason, "reason", "R", "", "reason for skipping")
 	cmd.Flags().BoolVar(&noRevert, "no-revert", false, "skip reverting file changes")
-
 	return cmd
 }
 
@@ -609,58 +463,35 @@ func skipBatchCmd() *cobra.Command {
 		Use:   "skip-batch",
 		Short: "Skip all in-progress tasks and revert changes",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			s, err := newSession()
 			if err != nil {
 				return err
 			}
 
-			client := deepsource.NewClient(cfg.DeepSource.APIToken)
-
-			store, err := task.NewStore(getRepoPath())
-			if err != nil {
-				return err
-			}
-
-			manager := task.NewManager(store, client, cfg.Repository.Owner, cfg.Repository.Name)
-
-			tasks := manager.GetInProgressTasks()
+			tasks := s.manager.GetInProgressTasks()
 			if len(tasks) == 0 {
 				return fmt.Errorf("no tasks in progress")
 			}
 
-			// Collect unique files and task IDs
-			filesMap := make(map[string]bool)
-			var taskIDs []string
-			for _, t := range tasks {
-				filesMap[t.Issue.FilePath] = true
-				taskIDs = append(taskIDs, t.ID)
-			}
-
-			// Revert all files
+			files, taskIDs := uniqueFilesAndIDs(tasks)
 			if !noRevert {
-				for f := range filesMap {
-					revertCmd := exec.Command("git", "checkout", "--", f)
-					revertCmd.Dir = getRepoPath()
-					if output, err := revertCmd.CombinedOutput(); err != nil {
-						fmt.Printf("Warning: failed to revert %s: %v\n%s", f, err, string(output))
-					} else {
+				if err := gitRevert(s.repo, files); err != nil {
+					fmt.Printf("Warning: %v\n", err)
+				} else {
+					for _, f := range files {
 						fmt.Printf("🔄 Reverted: %s\n", f)
 					}
 				}
 			}
-
-			if err := manager.SkipBatch(taskIDs, reason); err != nil {
+			if err := s.manager.SkipBatch(taskIDs, reason); err != nil {
 				return err
 			}
-
 			fmt.Printf("Batch skipped: %d tasks\n", len(tasks))
 			return nil
 		},
 	}
-
 	cmd.Flags().StringVarP(&reason, "reason", "R", "", "reason for skipping")
 	cmd.Flags().BoolVar(&noRevert, "no-revert", false, "skip reverting file changes")
-
 	return cmd
 }
 
@@ -669,24 +500,13 @@ func resetCmd() *cobra.Command {
 		Use:   "reset",
 		Short: "Reset all tasks to pending",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			s, err := newSession()
 			if err != nil {
 				return err
 			}
-
-			client := deepsource.NewClient(cfg.DeepSource.APIToken)
-
-			store, err := task.NewStore(getRepoPath())
-			if err != nil {
+			if err := s.manager.Reset(); err != nil {
 				return err
 			}
-
-			manager := task.NewManager(store, client, cfg.Repository.Owner, cfg.Repository.Name)
-
-			if err := manager.Reset(); err != nil {
-				return err
-			}
-
 			fmt.Println("All tasks reset to pending.")
 			return nil
 		},
@@ -698,25 +518,14 @@ func resetProgressCmd() *cobra.Command {
 		Use:   "reset-progress",
 		Short: "Reset in-progress tasks back to pending",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadConfig()
+			s, err := newSession()
 			if err != nil {
 				return err
 			}
-
-			client := deepsource.NewClient(cfg.DeepSource.APIToken)
-
-			store, err := task.NewStore(getRepoPath())
+			count, err := s.manager.ResetInProgress()
 			if err != nil {
 				return err
 			}
-
-			manager := task.NewManager(store, client, cfg.Repository.Owner, cfg.Repository.Name)
-
-			count, err := manager.ResetInProgress()
-			if err != nil {
-				return err
-			}
-
 			if count == 0 {
 				fmt.Println("No in-progress tasks to reset.")
 			} else {
@@ -728,5 +537,69 @@ func resetProgressCmd() *cobra.Command {
 }
 
 func printStats(manager *task.Manager) {
-	fmt.Println(cascade.GenerateProgressReport(manager.GetStats()))
+	fmt.Println(prompt.GenerateProgressReport(manager.GetStats()))
+}
+
+// resolveInProgressTask returns the task with the given ID, or the current in-progress task if id is empty.
+func resolveInProgressTask(manager *task.Manager, id string) (*task.Task, error) {
+	if id == "" {
+		tasks := manager.GetInProgressTasks()
+		if len(tasks) == 0 {
+			return nil, fmt.Errorf("no task in progress")
+		}
+		return tasks[0], nil
+	}
+	t, err := manager.GetTask(id)
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func uniqueFilesAndIDs(tasks []*task.Task) (files, taskIDs []string) {
+	seen := make(map[string]bool)
+	for _, t := range tasks {
+		taskIDs = append(taskIDs, t.ID)
+		if !seen[t.Issue.FilePath] {
+			seen[t.Issue.FilePath] = true
+			files = append(files, t.Issue.FilePath)
+		}
+	}
+	sort.Strings(files)
+	return files, taskIDs
+}
+
+func stageFiles(repo string, files []string) error {
+	args := append([]string{"add", "--"}, files...)
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repo
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to stage files: %w\n%s", err, string(output))
+	}
+	return nil
+}
+
+func gitCommit(repo, message string) (string, error) {
+	commitCmd := exec.Command("git", "commit", "-m", message)
+	commitCmd.Dir = repo
+	if output, err := commitCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to commit: %w\n%s", err, string(output))
+	}
+	hashCmd := exec.Command("git", "rev-parse", "--short", "HEAD")
+	hashCmd.Dir = repo
+	hashOutput, err := hashCmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get commit hash: %w", err)
+	}
+	return strings.TrimSpace(string(hashOutput)), nil
+}
+
+func gitRevert(repo string, files []string) error {
+	args := append([]string{"checkout", "--"}, files...)
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repo
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git checkout: %w\n%s", err, string(output))
+	}
+	return nil
 }
