@@ -13,7 +13,7 @@ DSFix 是个 Claude Code plugin：装一次，之后跟 Claude 用大白话聊�
 ## 安装
 
 ```
-/plugin marketplace add github:zealllot/dsfix
+/plugin marketplace add zealllot/dsfix
 /plugin install dsfix@zealllot-tools
 ```
 

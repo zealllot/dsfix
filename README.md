@@ -13,7 +13,7 @@ DSFix is delivered as a Claude Code plugin: install it once, and Claude can driv
 ## Install
 
 ```
-/plugin marketplace add github:zealllot/dsfix
+/plugin marketplace add zealllot/dsfix
 /plugin install dsfix@zealllot-tools
 ```
 
